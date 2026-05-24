@@ -216,3 +216,15 @@ class ResultSetDiff(BaseModel):
     extra_columns: list[str] = Field(default_factory=list)
     type_mismatches: list[TypeMismatch] = Field(default_factory=list)
     column_mismatches: list[ColumnMismatch] = Field(default_factory=list)
+
+
+class ScoreResult(BaseModel):
+    """The outcome of running a Scorer against an EvalCase: pass/fail plus diagnostics."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    scorer: Annotated[str, Field(min_length=1)]
+    passed: bool
+    diff: ResultSetDiff | None = None
+    explanation: Annotated[str, Field(min_length=1)] | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)

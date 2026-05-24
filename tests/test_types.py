@@ -22,6 +22,7 @@ from data_eval.types import (
     PlatformRef,
     ResultSetDiff,
     RowCountExpectation,
+    ScoreResult,
     SnapshotRef,
     SolverOutput,
     TypeMismatch,
@@ -663,3 +664,84 @@ class TestResultSetDiff:
         a.type_mismatches.append(TypeMismatch(column="x", expected="INT", actual="VARCHAR"))
         assert b.missing_columns == []
         assert b.type_mismatches == []
+
+
+@pytest.mark.unit
+class TestScoreResult:
+    def test_minimal_passed(self) -> None:
+        result = ScoreResult(scorer="result_set_equivalence", passed=True)
+        assert result.scorer == "result_set_equivalence"
+        assert result.passed is True
+        assert result.diff is None
+        assert result.explanation is None
+        assert result.metadata == {}
+
+    def test_minimal_failed(self) -> None:
+        result = ScoreResult(scorer="result_set_equivalence", passed=False)
+        assert result.passed is False
+
+    def test_full_construction(self) -> None:
+        diff = ResultSetDiff(
+            expected_row_count=10,
+            actual_row_count=8,
+            missing_row_count=2,
+            column_mismatches=[ColumnMismatch(column="revenue", unexpected_count=3)],
+        )
+        result = ScoreResult(
+            scorer="result_set_equivalence",
+            passed=False,
+            diff=diff,
+            explanation="2 missing rows; 3 value mismatches in revenue",
+            metadata={"engine_version": "0.1.0"},
+        )
+        assert result.diff == diff
+        assert result.explanation is not None
+        assert result.metadata["engine_version"] == "0.1.0"
+
+    def test_passed_can_carry_diff(self) -> None:
+        diff = ResultSetDiff(expected_row_count=5, actual_row_count=5)
+        result = ScoreResult(scorer="result_set_equivalence", passed=True, diff=diff)
+        assert result.passed is True
+        assert result.diff is not None
+        assert result.diff.expected_row_count == 5
+
+    def test_json_round_trip_minimal(self) -> None:
+        result = ScoreResult(scorer="result_set_equivalence", passed=True)
+        restored = ScoreResult.model_validate_json(result.model_dump_json())
+        assert restored == result
+
+    def test_json_round_trip_with_diff(self) -> None:
+        result = ScoreResult(
+            scorer="result_set_equivalence",
+            passed=False,
+            diff=ResultSetDiff(
+                expected_row_count=3,
+                actual_row_count=2,
+                missing_row_count=1,
+            ),
+            explanation="1 row missing",
+        )
+        restored = ScoreResult.model_validate_json(result.model_dump_json())
+        assert restored == result
+
+    def test_rejects_empty_scorer(self) -> None:
+        with pytest.raises(ValidationError):
+            ScoreResult(scorer="", passed=True)
+
+    def test_rejects_empty_explanation(self) -> None:
+        with pytest.raises(ValidationError):
+            ScoreResult.model_validate(
+                {"scorer": "x", "passed": True, "explanation": ""},
+            )
+
+    def test_rejects_extra_fields(self) -> None:
+        with pytest.raises(ValidationError):
+            ScoreResult.model_validate(
+                {"scorer": "x", "passed": True, "score": 0.5},
+            )
+
+    def test_default_metadata_not_shared(self) -> None:
+        a = ScoreResult(scorer="x", passed=True)
+        b = ScoreResult(scorer="x", passed=True)
+        a.metadata["touched"] = True
+        assert b.metadata == {}
