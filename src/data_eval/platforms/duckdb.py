@@ -63,8 +63,6 @@ class DuckDBAdapter:
                 error=str(e),
             )
         elapsed = time.perf_counter() - start
-        # Single pass over description; tuple-unpack so a malformed PEP-249
-        # entry fails loudly here rather than producing silently-wrong rows.
         schema: list[Column] = []
         names: list[str] = []
         for name, type_, *_ in description:

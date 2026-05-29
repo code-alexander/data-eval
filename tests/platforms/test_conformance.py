@@ -1,0 +1,77 @@
+"""Shared ``PlatformAdapter`` conformance battery.
+
+Free-function tests parametrised over every registered adapter via the
+``under_test`` fixture in ``conftest.py``. Each test asserts one behavioural
+property of the ``PlatformAdapter`` contract using the dialect-specific SQL
+that adapter supplied in its concrete ``ConformanceFixtures`` dataclass.
+
+An adapter is "done" when every test in this module passes for its ID.
+"""
+
+from data_eval.platforms.base import PlatformAdapter
+
+from .conftest import UnderTest
+
+
+def test_satisfies_platform_adapter_protocol(under_test: UnderTest) -> None:
+    assert isinstance(under_test.adapter, PlatformAdapter)
+
+
+def test_execute_returns_rows_and_schema(under_test: UnderTest) -> None:
+    result = under_test.adapter.execute(under_test.fixtures.one_row_one_column)
+    assert result.error is None
+    assert result.rows == [{"n": 1}]
+    assert result.schema_ is not None
+    assert len(result.schema_) == 1
+    assert result.schema_[0].name == "n"
+    assert result.schema_[0].type  # non-empty native type string
+
+
+def test_empty_result_set_keeps_schema(under_test: UnderTest) -> None:
+    result = under_test.adapter.execute(under_test.fixtures.empty_result)
+    assert result.error is None
+    assert result.rows == []
+    assert result.schema_ is not None
+    assert len(result.schema_) == 1
+    assert result.schema_[0].name == "n"
+
+
+def test_multiple_rows_returned(under_test: UnderTest) -> None:
+    result = under_test.adapter.execute(under_test.fixtures.three_rows)
+    assert result.error is None
+    assert len(result.rows) == 3
+    assert sorted(r["n"] for r in result.rows) == [1, 2, 3]
+
+
+def test_null_values_round_trip(under_test: UnderTest) -> None:
+    result = under_test.adapter.execute(under_test.fixtures.null_value)
+    assert result.error is None
+    assert result.rows == [{"x": None}]
+
+
+def test_missing_table_returns_error_not_exception(under_test: UnderTest) -> None:
+    result = under_test.adapter.execute(under_test.fixtures.references_missing_table)
+    assert result.error is not None
+    assert result.error  # non-empty
+    assert result.rows == []
+    assert result.schema_ is None
+
+
+def test_parse_error_returns_error_not_exception(under_test: UnderTest) -> None:
+    result = under_test.adapter.execute(under_test.fixtures.parse_error)
+    assert result.error is not None
+    assert result.error  # non-empty
+    assert result.rows == []
+    assert result.schema_ is None
+
+
+def test_latency_is_measured_on_success(under_test: UnderTest) -> None:
+    result = under_test.adapter.execute(under_test.fixtures.one_row_one_column)
+    assert result.error is None
+    assert result.latency_seconds >= 0
+
+
+def test_latency_is_measured_on_failure(under_test: UnderTest) -> None:
+    result = under_test.adapter.execute(under_test.fixtures.parse_error)
+    assert result.error is not None
+    assert result.latency_seconds >= 0

@@ -1,29 +1,15 @@
-"""DuckDB adapter: shared conformance battery + DuckDB-specific native-type checks."""
+"""DuckDB-specific tests: native-type-string fidelity and file-backed lifecycle.
+
+The cross-adapter conformance battery lives in ``test_conformance.py`` and runs
+against DuckDB automatically via the parametrised ``under_test`` fixture.
+"""
 
 from pathlib import Path
 
 import pytest
 from sqlglot import exp
 
-from data_eval.platforms.base import PlatformAdapter
 from data_eval.platforms.duckdb import DuckDBAdapter
-
-from .conformance import PlatformAdapterConformance
-
-
-@pytest.mark.unit
-class TestDuckDBConformance(PlatformAdapterConformance):
-    """``DuckDBAdapter`` passes the shared ``PlatformAdapter`` conformance battery."""
-
-    @pytest.fixture
-    def adapter(self) -> PlatformAdapter:
-        return DuckDBAdapter()
-
-
-@pytest.mark.unit
-class TestDuckDBProtocolMembership:
-    def test_satisfies_runtime_checkable_protocol(self) -> None:
-        assert isinstance(DuckDBAdapter(), PlatformAdapter)
 
 
 @pytest.mark.unit
