@@ -46,21 +46,24 @@ class TestPlatformRef:
 
     def test_full_construction(self) -> None:
         ref = PlatformRef(
-            name="prod-snow",
-            kind="snowflake",
-            dialect="snowflake",
-            config={"account": "abc123", "warehouse": "EVAL_WH"},
+            name="prod-pg",
+            kind="postgres",
+            dialect="postgres",
+            config={"host": "db.example.com", "dbname": "analytics"},
         )
-        assert ref.config["account"] == "abc123"
+        assert ref.config["dbname"] == "analytics"
 
     def test_json_schema_round_trip(self) -> None:
         ref = PlatformRef(name="local", kind="duckdb", config={"path": ":memory:"})
         restored = PlatformRef.model_validate_json(ref.model_dump_json())
         assert restored == ref
 
-    def test_rejects_unknown_kind(self) -> None:
+    # "snowflake" is included deliberately: it has no shipped adapter, so it is not a
+    # PlatformKind and must be rejected at the boundary just like a never-supported "oracle".
+    @pytest.mark.parametrize("kind", ["oracle", "snowflake"])
+    def test_rejects_unknown_kind(self, kind: str) -> None:
         with pytest.raises(ValidationError):
-            PlatformRef.model_validate({"name": "x", "kind": "oracle"})
+            PlatformRef.model_validate({"name": "x", "kind": kind})
 
     def test_rejects_unknown_dialect(self) -> None:
         with pytest.raises(ValidationError):
@@ -381,7 +384,7 @@ class TestEvalCase:
             id="case-1",
             input="List active users",
             expected=ExpectedSQL(sql="SELECT * FROM users WHERE active"),
-            platform=PlatformRef(name="warehouse", kind="snowflake"),
+            platform=PlatformRef(name="warehouse", kind="postgres"),
             snapshot=SnapshotRef(kind="timestamp", value="2026-05-23T00:00:00Z"),
             comparison=ComparisonConfig(column_order="strict"),
             allow_data_egress=True,

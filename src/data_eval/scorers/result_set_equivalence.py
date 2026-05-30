@@ -15,6 +15,8 @@ misconfiguration — pairing this scorer with a non-``ExpectedResultSet`` expect
 raises, since that is programmer error.
 """
 
+from typing import assert_never
+
 from data_eval.equivalence import TypedResultSet, UntypedResultSet, compare
 from data_eval.types import (
     EvalCase,
@@ -29,20 +31,24 @@ from data_eval.types import (
 
 SCORER_NAME = "result_set_equivalence"
 
-# Every PlatformKind is also a valid SQLGlot dialect string, but they are distinct
-# Literal types — this explicit map is the type-safe bridge (and documents the relation).
-_KIND_TO_DIALECT: dict[PlatformKind, SQLDialect] = {
-    "duckdb": "duckdb",
-    "postgres": "postgres",
-    "snowflake": "snowflake",
-    "bigquery": "bigquery",
-    "databricks": "databricks",
-}
-
 
 def _dialect_for(platform: PlatformRef) -> SQLDialect:
-    """Resolve the SQLGlot dialect for a platform: explicit override, else inferred from kind."""
-    return platform.dialect or _KIND_TO_DIALECT[platform.kind]
+    """Resolve the SQLGlot dialect for a platform: explicit override, else inferred from kind.
+
+    Each ``PlatformKind`` maps to its like-named SQLGlot dialect, but the two are distinct
+    Literal types — the exhaustive ``match`` is the type-safe bridge (ty fails if a new kind
+    is left unmapped). A ``dialect`` override (e.g. DuckDB parsing Snowflake SQL) wins.
+    """
+    if platform.dialect is not None:
+        return platform.dialect
+    kind: PlatformKind = platform.kind
+    match kind:
+        case "duckdb":
+            return "duckdb"
+        case "postgres":
+            return "postgres"
+        case _ as unreachable:  # pragma: no cover - exhaustiveness guard
+            assert_never(unreachable)
 
 
 class ResultSetEquivalence:

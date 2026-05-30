@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from data_eval.platforms import duckdb_platform, postgres_platform, resolve
 from data_eval.platforms.registry import close_all
@@ -43,9 +44,12 @@ class TestResolve:
         with pytest.raises(ValueError, match="already bound to a different configuration"):
             resolve(duckdb_platform(name="local", path="/tmp/other.duckdb"))
 
-    def test_unsupported_kind_raises(self) -> None:
-        with pytest.raises(ValueError, match="no adapter is registered"):
-            resolve(PlatformRef(name="wh", kind="snowflake"))
+    def test_unsupported_kind_blocked_before_resolution(self) -> None:
+        # resolve() dispatches exhaustively over PlatformKind, so it has no "unsupported
+        # kind" branch: an unsupported kind can never be constructed into a PlatformRef to
+        # hand to resolve in the first place. The boundary is PlatformRef validation.
+        with pytest.raises(ValidationError):
+            PlatformRef(name="wh", kind="snowflake")  # ty: ignore[invalid-argument-type]
 
     def test_close_all_is_idempotent_when_empty(self) -> None:
         close_all()

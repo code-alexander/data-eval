@@ -4,7 +4,11 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-PlatformKind = Literal["snowflake", "bigquery", "databricks", "postgres", "duckdb"]
+# Only platforms with a shipped adapter are listed: this Literal *is* the supported set,
+# so dispatch over it (registry builders, CLI flags, default-dialect) is exhaustively
+# type-checked via match/assert_never. Adding a platform = add it here + handle it at every
+# match site (ty fails until you do). snowflake/bigquery/databricks land with their adapters.
+PlatformKind = Literal["duckdb", "postgres"]
 
 SQLDialect = Literal[
     "snowflake",

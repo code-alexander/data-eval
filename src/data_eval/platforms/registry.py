@@ -7,9 +7,12 @@ Two responsibilities, both driver-light:
    driver — building a reference must work without the platform's extra installed.
 
 2. **Resolution** (``resolve``): turn a ``PlatformRef`` into a live adapter. Dispatch is
-   a plain ``dict`` of per-``kind`` builder functions (``_BUILDERS``) — no inheritance,
-   no base class, no MRO. Each builder reads only the config keys its adapter needs and
-   lazy-imports any optional driver, so importing this module never requires psycopg.
+   an exhaustive ``match`` over ``PlatformKind`` (``_build``) — explicit dispatch, no
+   inheritance, no base class, no MRO. Because ``PlatformKind`` lists only supported
+   platforms, ``assert_never`` makes the ``match`` exhaustively type-checked: adding a
+   platform fails ty until ``_build`` handles it. Each builder reads only the config keys
+   its adapter needs and lazy-imports any optional driver, so importing this module never
+   requires psycopg.
 
 Lifecycle (best practice borrowed from dbt's process-global adapter factory and
 pytest-postgresql's session-scoped server fixture): resolved adapters are cached in a
@@ -19,7 +22,7 @@ then closed once at session end via ``close_all`` (the pytest plugin's
 ``assert_eval``; resolution is the fallback. Non-pytest callers own ``close_all`` themselves.
 """
 
-from collections.abc import Callable
+from typing import assert_never
 
 from data_eval.platforms.base import PlatformAdapter
 from data_eval.platforms.duckdb import DuckDBAdapter
@@ -53,12 +56,17 @@ def _build_postgres(ref: PlatformRef) -> PlatformAdapter:
     return PostgresAdapter(conninfo=str(ref.config.get("conninfo", "")))
 
 
-# Dispatch by kind. Only the shipped adapters are registered; the remaining
-# ``PlatformKind`` values resolve to a clear "not yet supported" error.
-_BUILDERS: dict[PlatformKind, Callable[[PlatformRef], PlatformAdapter]] = {
-    "duckdb": _build_duckdb,
-    "postgres": _build_postgres,
-}
+def _build(ref: PlatformRef) -> PlatformAdapter:
+    """Build a live adapter for ``ref`` by exhaustive dispatch over its kind."""
+    kind: PlatformKind = ref.kind
+    match kind:
+        case "duckdb":
+            return _build_duckdb(ref)
+        case "postgres":
+            return _build_postgres(ref)
+        case _ as unreachable:  # pragma: no cover - exhaustiveness guard
+            assert_never(unreachable)
+
 
 # Session-global cache of live adapters, keyed by ``PlatformRef.name``. Owned by the
 # pytest plugin, which closes everything via ``close_all`` at session end.
@@ -69,8 +77,8 @@ def resolve(ref: PlatformRef) -> PlatformAdapter:
     """Return a live adapter for ``ref``, building and caching one on first use.
 
     Reuses the cached adapter on subsequent calls for the same ``ref.name``. Raises
-    ``ValueError`` if the name is already bound to a different configuration, or if no
-    adapter is registered for ``ref.kind``.
+    ``ValueError`` if the name is already bound to a different configuration. An unsupported
+    ``kind`` is unrepresentable — ``PlatformRef`` validation rejects it before resolution.
     """
     cached = _ADAPTERS.get(ref.name)
     if cached is not None:
@@ -83,12 +91,7 @@ def resolve(ref: PlatformRef) -> PlatformAdapter:
             raise ValueError(msg)
         return adapter
 
-    builder = _BUILDERS.get(ref.kind)
-    if builder is None:
-        msg = f"no adapter is registered for platform kind {ref.kind!r}"
-        raise ValueError(msg)
-
-    adapter = builder(ref)
+    adapter = _build(ref)
     _ADAPTERS[ref.name] = (ref, adapter)
     return adapter
 

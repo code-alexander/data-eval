@@ -88,16 +88,8 @@ class TestAssertEvalAdapterResolution:
         solver = CallableSolver(lambda c: "SELECT count(*) AS count FROM t WHERE genre = 'Rock'")
         assert_eval(case, solver, scorers=[ResultSetEquivalence()])  # no adapter, no raise == pass
 
-    def test_unsupported_platform_kind_raises(self) -> None:
-        case = EvalCase(
-            id="unsupported",
-            input="q",
-            expected=ExpectedResultSet(rows=[{"n": 1}]),
-            platform=PlatformRef(name="wh", kind="snowflake"),
-        )
-        solver = CallableSolver(lambda c: "SELECT 1 AS n")
-        with pytest.raises(ValueError, match="no adapter is registered"):
-            assert_eval(case, solver, scorers=[ResultSetEquivalence()])
+    # An unsupported platform kind is unrepresentable (PlatformRef validation rejects it),
+    # so there is no runtime "no adapter" path to test here; see TestPlatformRef in test_types.
 
 
 class _ErrorSolver:
