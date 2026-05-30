@@ -49,8 +49,9 @@ class TestAssertEvalEndToEnd:
         msg = str(exc.value)
         assert "rock-count" in msg
         assert _ROCK_SQL in msg  # the generated SQL is surfaced for debugging
-        assert "99" in msg  # expected-row sample
-        assert "{'count': 2}" in msg  # actual-row sample
+        assert "missing rows" in msg and "extra rows" in msg  # both diff directions rendered
+        assert "99" in msg  # expected-row sample (missing from actual)
+        assert "2" in msg  # actual-row sample (extra vs expected)
 
     def test_fails_with_execution_error_on_bad_sql(self, duck: DuckDBAdapter) -> None:
         case = _case([{"count": 2}])
