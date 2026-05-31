@@ -1,10 +1,4 @@
-"""Postgres-specific tests: native-type-string fidelity via psycopg ``type_display``.
-
-The cross-adapter conformance battery lives in ``test_conformance.py`` and runs
-against Postgres automatically via the parametrised ``under_test`` fixture (id
-``postgres``, marked ``e2e``). These tests need a live Postgres and are likewise
-marked ``e2e``; they skip when none is reachable (see ``connect_postgres_or_skip``).
-"""
+"""Postgres-specific tests: native-type-string fidelity via psycopg `type_display`."""
 
 import pytest
 from sqlglot import exp
@@ -16,7 +10,7 @@ from .conftest import connect_postgres_or_skip
 
 @pytest.mark.e2e
 class TestPostgresNativeTypes:
-    """Postgres emits the native type strings (psycopg ``type_display``) SQLGlot's ``postgres`` dialect parses."""
+    """Postgres emits the native type strings (psycopg `type_display`) SQLGlot's `postgres` dialect parses."""
 
     @pytest.fixture
     def adapter(self) -> PlatformAdapter:

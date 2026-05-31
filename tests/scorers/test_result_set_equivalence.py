@@ -1,4 +1,4 @@
-"""Tests for ``ResultSetEquivalence`` — the engine-backed v1 scorer."""
+"""Tests for `ResultSetEquivalence` — the engine-backed v1 scorer."""
 
 import pytest
 

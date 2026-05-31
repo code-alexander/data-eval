@@ -1,9 +1,4 @@
-"""Tests for the data-eval pytest plugin's ``case`` fixture, exercised via ``pytester``.
-
-These run an inline pytest session (in-process, so the entry-point-registered plugin is
-active) to prove the fixture is available with zero conftest setup and that requesting
-``case`` without ``@eval_case`` fails with a clear message.
-"""
+"""Tests for the data-eval pytest plugin's `case` fixture, exercised via `pytester`."""
 
 import json
 

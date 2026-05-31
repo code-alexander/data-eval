@@ -57,14 +57,14 @@ class TestRenderFailure:
             expected_row_count=1,
             actual_row_count=0,
             missing_columns=["amount"],
-            extra_columns=["total"],
+            unexpected_columns=["total"],
             column_order_mismatch=True,
             type_mismatches=[TypeMismatch(column="ts", expected="TIMESTAMP", actual="DATE")],
         )
         score = ScoreResult(scorer="result_set_equivalence", passed=False, diff=diff)
         msg = render_failure(_case(), out, result, [score])
         assert "missing columns" in msg and "amount" in msg
-        assert "extra columns" in msg and "total" in msg
+        assert "unexpected columns" in msg and "total" in msg
         assert "column order differs" in msg
         assert "type mismatches" in msg
         assert "TIMESTAMP" in msg and "DATE" in msg

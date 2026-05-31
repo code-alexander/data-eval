@@ -1,21 +1,4 @@
-"""Run-level collection of eval outcomes, for the end-of-run summary and JSON artifact.
-
-``assert_eval`` is a plain function called inside a test body — it has no access to the
-pytest ``item``/``request``, so it can't use ``record_property``. Following pytest-check's
-precedent, it instead appends a ``CaseReport`` to a module-level accumulator here (for both
-passing and failing cases); the pytest plugin reads the accumulation in
-``pytest_terminal_summary`` (the Rich rollup table) and ``pytest_sessionfinish`` (the JSON
-artifact). The accumulator lives for the process; the plugin never clears it (avoiding
-ordering hazards between the summary and finish hooks) — process exit discards it, and the
-framework's own test suite clears it per-test for isolation.
-
-``CaseReport`` is the JSON artifact's schema. It lives here, with the reporting logic,
-rather than in ``types.py`` (the core domain model) — a deliberate, easily-reversed split.
-
-Known limitation: the accumulator is process-local, so under ``pytest-xdist`` the data
-lives in the worker processes; the controller's summary/artifact aggregate only what the
-controller itself ran. The plugin skips reporting on workers to avoid duplication.
-"""
+"""Run-level collection of eval outcomes, for the end-of-run summary and JSON artifact."""
 
 import json
 from collections.abc import Sequence
@@ -56,7 +39,14 @@ def clear() -> None:
 
 
 def run_report_json(case_reports: Sequence[CaseReport]) -> str:
-    """Serialize the run as a structured JSON artifact: pass/fail counts plus every case."""
+    """Serialize the run as a structured JSON artifact: pass/fail counts plus every case.
+
+    Args:
+        case_reports: The accumulated case outcomes to serialize.
+
+    Returns:
+        A JSON string with `passed`/`failed` counts and a `cases` array.
+    """
     payload = {
         "passed": sum(1 for r in case_reports if r.passed),
         "failed": sum(1 for r in case_reports if not r.passed),

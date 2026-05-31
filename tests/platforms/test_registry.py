@@ -1,4 +1,4 @@
-"""Unit tests for platform-ref builders and ``PlatformRef`` -> adapter resolution."""
+"""Unit tests for platform-ref builders and `PlatformRef` -> adapter resolution."""
 
 from pathlib import Path
 

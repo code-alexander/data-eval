@@ -1,20 +1,4 @@
-"""The data-eval pytest plugin: the ``case`` fixture, run summary, and JSON artifact.
-
-Loaded automatically via the ``pytest11`` entry point in ``pyproject.toml`` — so
-``pytest tests/`` "just works" with zero conftest ceremony (design principle 4). The plugin
-stays side-effect-free for projects that merely have data-eval installed: the ``case``
-fixture is active only for tests that request it, the run summary prints only when at least
-one case ran, and the JSON artifact is written only when ``--data-eval-json`` is passed.
-
-Reporting reads the run accumulator in ``reporting.collector`` (populated by ``assert_eval``):
-a Rich rollup table in ``pytest_terminal_summary`` and a structured JSON artifact in
-``pytest_sessionfinish``. CI pass/fail comes from pytest's native ``--junitxml`` for free —
-each failing ``assert_eval`` is an ordinary test failure, and its Rich diff lands in the
-``<failure>`` body — so the plugin emits no JUnit XML of its own.
-
-Under ``pytest-xdist`` the accumulator is process-local, so reporting runs only on the
-controller (workers are skipped); aggregation across distributed workers is not yet wired.
-"""
+"""The data-eval pytest plugin: the `case` fixture, run summary, and JSON artifact."""
 
 from pathlib import Path
 
@@ -30,7 +14,7 @@ _JSON_OPTION = "--data-eval-json"
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
-    """Register ``--data-eval-json=PATH`` to write the structured results artifact."""
+    """Register `--data-eval-json=PATH` to write the structured results artifact."""
     group = parser.getgroup("data-eval")
     group.addoption(
         _JSON_OPTION,
@@ -43,7 +27,17 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 @pytest.fixture
 def case(request: pytest.FixtureRequest) -> EvalCase:
-    """Inject the ``EvalCase`` attached by ``@eval_case`` on the requesting test function."""
+    """Inject the `EvalCase` attached by `@eval_case` on the requesting test function.
+
+    Args:
+        request: The pytest fixture request, used to find the requesting test function.
+
+    Returns:
+        The `EvalCase` attached to the test by its `@eval_case(...)` decorator.
+
+    Raises:
+        UsageError: If the requesting test is not decorated with `@eval_case(...)`.
+    """
     evalcase = read_eval_case(request.function)
     if evalcase is None:
         msg = (

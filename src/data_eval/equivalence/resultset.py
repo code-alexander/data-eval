@@ -1,12 +1,4 @@
-"""Engine-input result-set types.
-
-Two shapes — ``TypedResultSet`` (rows + required ``Schema``) and ``UntypedResultSet``
-(rows only) — are the inputs the equivalence engine consumes. The split lets
-``compare()`` overloads gate type comparison on schema presence (Design A): the
-"strict types without a schema" state is unrepresentable at the call site rather
-than caught at runtime. Internal to the engine; scorers adapt the public
-``ExecutionResult`` / ``ExpectedResultSet`` into these.
-"""
+"""Engine-input result-set types: `TypedResultSet` (with schema) and `UntypedResultSet` (rows only)."""
 
 from typing import Any
 

@@ -1,16 +1,4 @@
-"""Conformance plumbing: ``ConformanceFixtures`` Protocol, per-adapter fixture types, parametrised ``under_test`` fixture.
-
-Pattern (b): each adapter contributes its OWN named ``*Fixtures`` dataclass whose values
-are the dialect-specific SQL strings it uses to exercise each behavioural test. The
-``ConformanceFixtures`` Protocol names the shared vocabulary; static checkers verify
-each adapter's dataclass satisfies it. No inheritance, no MRO, no defaults overridden
-by descendants — each adapter's complete SQL surface is one local literal.
-
-Adding a new adapter = add one ``*Fixtures`` dataclass + one factory + one entry in
-``params=[...]`` / ``ids=[...]``. Adding a new behavioural test = add one field to the
-Protocol + one field to every concrete fixtures dataclass (compile-time enforcement of
-coverage via the dataclass constructor).
-"""
+"""Conformance plumbing: `ConformanceFixtures` Protocol, per-adapter fixture types, and the parametrised `under_test` fixture."""
 
 import os
 from dataclasses import dataclass
@@ -27,7 +15,7 @@ class ConformanceFixtures(Protocol):
 
     Each attribute names a *behaviour*; its value is the adapter's dialect-specific
     SQL that exercises it. Adapters implement this Protocol structurally via their
-    own concrete ``@dataclass(frozen=True)`` types — no inheritance.
+    own concrete `@dataclass(frozen=True)` types.
     """
 
     one_row_one_column: str  # returns one row with one column named "n"
@@ -40,7 +28,7 @@ class ConformanceFixtures(Protocol):
 
 @dataclass(frozen=True)
 class DuckDBFixtures:
-    """DuckDB's concrete ``ConformanceFixtures`` — structurally satisfies the Protocol."""
+    """DuckDB's concrete `ConformanceFixtures` — structurally satisfies the Protocol."""
 
     one_row_one_column: str = "SELECT 1 AS n"
     empty_result: str = "SELECT 1 AS n WHERE 1=0"
@@ -52,12 +40,12 @@ class DuckDBFixtures:
 
 @dataclass(frozen=True)
 class PostgresFixtures:
-    """PostgreSQL's concrete ``ConformanceFixtures`` — idiomatic Postgres SQL.
+    """PostgreSQL's concrete `ConformanceFixtures` — idiomatic Postgres SQL.
 
-    Diverges from DuckDB where the idiom differs: ``VALUES`` row lists, real
-    boolean literals (``WHERE false``), and a genuine syntax error for
-    ``parse_error`` (``SELECT FROM nope`` is only a *missing-relation* error in
-    Postgres, not a parse error — it would duplicate ``references_missing_table``).
+    Diverges from DuckDB where the idiom differs: `VALUES` row lists, real
+    boolean literals (`WHERE false`), and a genuine syntax error for
+    `parse_error` (`SELECT FROM nope` is only a *missing-relation* error in
+    Postgres, not a parse error — it would duplicate `references_missing_table`).
     """
 
     one_row_one_column: str = "SELECT 1 AS n"
@@ -70,7 +58,7 @@ class PostgresFixtures:
 
 @dataclass(frozen=True)
 class UnderTest:
-    """One adapter-under-test: its live ``PlatformAdapter`` + the SQL it uses."""
+    """One adapter-under-test: its live `PlatformAdapter` + the SQL it uses."""
 
     adapter: PlatformAdapter
     fixtures: ConformanceFixtures
@@ -81,9 +69,9 @@ def _duckdb_under_test() -> UnderTest:
 
 
 def _postgres_dsn() -> str:
-    """Assemble a libpq connection string from dbt-style ``POSTGRES_TEST_*`` env vars.
+    """Assemble a libpq connection string from dbt-style `POSTGRES_TEST_*` env vars.
 
-    Defaults match the bundled ``docker-compose.yml`` so a bare ``docker compose up``
+    Defaults match the bundled `docker-compose.yml` so a bare `docker compose up`
     needs no further configuration; CI overrides them to point at a service container.
     """
     host = os.environ.get("POSTGRES_TEST_HOST", "localhost")
@@ -95,12 +83,12 @@ def _postgres_dsn() -> str:
 
 
 def connect_postgres_or_skip() -> PlatformAdapter:
-    """Connect a ``PostgresAdapter`` to the configured test database, or skip the test.
+    """Connect a `PostgresAdapter` to the configured test database, or skip the test.
 
-    Skips (rather than fails) when the ``postgres`` extra is not installed or no
-    Postgres is reachable — keeping ``pytest`` green for contributors without one,
-    while CI runs these via ``-m e2e`` against a service container. Shared by the
-    ``postgres`` conformance param and ``test_postgres.py``'s native-type tests.
+    Skips (rather than fails) when the `postgres` extra is not installed or no
+    Postgres is reachable — keeping `pytest` green for contributors without one,
+    while CI runs these via `-m e2e` against a service container. Shared by the
+    `postgres` conformance param and `test_postgres.py`'s native-type tests.
     """
     try:
         from data_eval.platforms.postgres import PostgresAdapter
@@ -118,9 +106,7 @@ def _postgres_under_test() -> UnderTest:
     return UnderTest(adapter=connect_postgres_or_skip(), fixtures=PostgresFixtures())
 
 
-# Function-scoped: each test gets a fresh adapter. Cheap for DuckDB (:memory:);
-# revisit when remote adapters (Postgres, Snowflake) arrive and connect cost
-# starts to matter — switch to session-scope with per-test isolation as needed.
+# Function-scoped: each test gets a fresh adapter.
 @pytest.fixture(
     params=[
         pytest.param(_duckdb_under_test, id="duckdb", marks=pytest.mark.unit),

@@ -109,14 +109,18 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 # Astral's recommended balanced starter set. Grow by adding categories as needed.
 # https://docs.astral.sh/ruff/linter/
-select = ["E", "F", "I", "UP", "B", "SIM", "D"]
+preview = true
+select = [
+    "E", "F", "I", "UP", "B", "SIM", "D",
+    "DOC102", "DOC201", "DOC202", "DOC402", "DOC403", "DOC501", "DOC502",
+]
 ignore = [
     "E501",  # line length — formatter handles it
     "B008",  # function-call-in-default-arg — Pydantic Field() makes this routine
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["D"]
+"tests/**" = ["D", "DOC"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

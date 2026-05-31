@@ -1,8 +1,4 @@
-"""DuckDB-specific tests: native-type-string fidelity and file-backed lifecycle.
-
-The cross-adapter conformance battery lives in ``test_conformance.py`` and runs
-against DuckDB automatically via the parametrised ``under_test`` fixture.
-"""
+"""DuckDB-specific tests: native-type-string fidelity and file-backed lifecycle."""
 
 from pathlib import Path
 
@@ -14,7 +10,7 @@ from data_eval.platforms.duckdb import DuckDBAdapter
 
 @pytest.mark.unit
 class TestDuckDBNativeTypes:
-    """DuckDB emits the native SQL type strings SQLGlot's ``duckdb`` dialect parses."""
+    """DuckDB emits the native SQL type strings SQLGlot's `duckdb` dialect parses."""
 
     @pytest.fixture
     def adapter(self) -> DuckDBAdapter:
@@ -60,13 +56,11 @@ class TestDuckDBNativeTypes:
 
 @pytest.mark.unit
 class TestDuckDBFilePath:
-    """``database=`` argument is honoured — a file-backed DB persists across reopens."""
+    """`database=` argument is honoured — a file-backed DB persists across reopens."""
 
     def test_file_backed_database_persists(self, tmp_path: Path) -> None:
-        # Context-manager exit calls close() — deterministic release of the
-        # OS file handle / WAL lock (DuckDB issues #3573, #1365). Avoids the
-        # `del`-then-finalize trap (DuckDB #14771) that breaks on Windows and
-        # under non-CPython runtimes.
+        # Context-manager exit calls close() for deterministic release of the OS file
+        # handle / WAL lock — implicit cleanup is unreliable on Windows.
         db_path = str(tmp_path / "test.duckdb")
         with DuckDBAdapter(database=db_path) as first:
             first.execute("CREATE TABLE t (x INTEGER)")

@@ -1,16 +1,4 @@
-"""Rich-backed terminal rendering of eval failures, for embedding in the ``AssertionError``.
-
-``assert_eval`` raises an ``AssertionError`` whose message is what pytest prints on failure.
-The structured diagnostic — the ``ResultSetDiff`` — is rendered here as aligned Rich tables;
-the surrounding scaffolding (input, SQL, error text) stays verbatim plain text, because
-routing SQL through Rich would soft-wrap and mangle it.
-
-Tables are rendered to a string via ``Console(file=StringIO(), no_color=True)``: Rich emits
-no ANSI for non-terminal output, so the result is plain Unicode tables that read correctly
-under ``-q``/``-s``, pytest-xdist, and non-TTY CI logs alike — no escape codes leak into CI.
-Colored, run-level summaries via ``pytest_terminal_summary`` and a machine-readable JSON
-artifact are a later increment; this module owns the per-failure human rendering.
-"""
+"""Rich-backed terminal rendering of eval failures, for embedding in the `AssertionError`."""
 
 import io
 import textwrap
@@ -30,7 +18,17 @@ def render_failure(
     result: ExecutionResult,
     failures: Sequence[ScoreResult],
 ) -> str:
-    """Render a scorer failure: the case, the generated SQL, and each failing score's diff."""
+    """Render a scorer failure: the case, the generated SQL, and each failing score's diff.
+
+    Args:
+        case: The eval case that failed.
+        output: The solver output (carries the generated SQL).
+        result: The execution result for the generated SQL.
+        failures: The scorer results that failed.
+
+    Returns:
+        A plain-text failure message for embedding in the `AssertionError`.
+    """
     lines = [
         f"data-eval case {case.id!r} failed",
         f"  input: {case.input}",
@@ -48,7 +46,15 @@ def render_failure(
 
 
 def render_solver_error(case: EvalCase, error: SolverError) -> str:
-    """Render a solver failure (no SQL was executed)."""
+    """Render a solver failure (no SQL was executed).
+
+    Args:
+        case: The eval case that failed.
+        error: The typed solver error to render.
+
+    Returns:
+        A plain-text failure message for embedding in the `AssertionError`.
+    """
     return "\n".join(
         [
             f"data-eval case {case.id!r} failed: solver error",
@@ -59,7 +65,14 @@ def render_solver_error(case: EvalCase, error: SolverError) -> str:
 
 
 def render_summary(case_reports: Sequence[CaseReport]) -> str:
-    """Render a run-level rollup table (one row per case) plus a pass/fail tally."""
+    """Render a run-level rollup table (one row per case) plus a pass/fail tally.
+
+    Args:
+        case_reports: The accumulated case outcomes.
+
+    Returns:
+        A plain-text (no-ANSI) table plus a `N passed, M failed` line.
+    """
     table = Table(box=box.SIMPLE, pad_edge=False)
     table.add_column("case")
     table.add_column("result")
@@ -76,24 +89,37 @@ def render_summary(case_reports: Sequence[CaseReport]) -> str:
 
 
 def _summary_detail(report: CaseReport) -> str:
-    """The detail cell for a case: its solver error, or the names of any failed scorers."""
+    """Build the detail cell for a case: its solver error, or any failed scorer names.
+
+    Args:
+        report: The case outcome to summarize.
+
+    Returns:
+        The solver error if present, else a comma-separated list of failed scorer names.
+    """
     if report.error is not None:
         return report.error
     return ", ".join(score.scorer for score in report.scores if not score.passed)
 
 
 def _render_diff(diff: ResultSetDiff) -> str:
-    """Render a ``ResultSetDiff`` as Rich tables, returned as an indented plain-text block.
+    """Render a `ResultSetDiff` as Rich tables, returned as an indented plain-text block.
 
     Section labels are emitted as preceding plain lines rather than table titles: a table
     sizes to its content, which would otherwise wrap a longer title into that narrow width.
+
+    Args:
+        diff: The structured result-set difference to render.
+
+    Returns:
+        An indented, plain-text block of Rich tables describing the differences.
     """
     renderables: list[RenderableType] = ["result-set diff", _summary_table(diff)]
 
     if diff.missing_columns:
         renderables.append(f"missing columns: {diff.missing_columns}")
-    if diff.extra_columns:
-        renderables.append(f"extra columns: {diff.extra_columns}")
+    if diff.unexpected_columns:
+        renderables.append(f"unexpected columns: {diff.unexpected_columns}")
     if diff.column_order_mismatch:
         renderables.append("column order differs")
     if diff.type_mismatches:

@@ -1,26 +1,4 @@
-"""Platform-reference builders and ``PlatformRef`` -> live ``PlatformAdapter`` resolution.
-
-Two responsibilities, both driver-light:
-
-1. **Ref builders** (``duckdb_platform`` / ``postgres_platform``): construct a
-   serializable ``PlatformRef`` from ergonomic keyword args. These do NOT touch a
-   driver — building a reference must work without the platform's extra installed.
-
-2. **Resolution** (``resolve``): turn a ``PlatformRef`` into a live adapter. Dispatch is
-   an exhaustive ``match`` over ``PlatformKind`` (``_build``) — explicit dispatch, no
-   inheritance, no base class, no MRO. Because ``PlatformKind`` lists only supported
-   platforms, ``assert_never`` makes the ``match`` exhaustively type-checked: adding a
-   platform fails ty until ``_build`` handles it. Each builder reads only the config keys
-   its adapter needs and lazy-imports any optional driver, so importing this module never
-   requires psycopg.
-
-Lifecycle (best practice borrowed from dbt's process-global adapter factory and
-pytest-postgresql's session-scoped server fixture): resolved adapters are cached in a
-session-global ``_ADAPTERS`` map keyed by ``PlatformRef.name`` and reused across cases,
-then closed once at session end via ``close_all`` (the pytest plugin's
-``pytest_sessionfinish`` hook owns that call). An explicitly passed adapter still wins in
-``assert_eval``; resolution is the fallback. Non-pytest callers own ``close_all`` themselves.
-"""
+"""Platform-reference builders and `PlatformRef` -> live `PlatformAdapter` resolution."""
 
 from typing import assert_never
 
@@ -30,15 +8,30 @@ from data_eval.types import PlatformKind, PlatformRef
 
 
 def duckdb_platform(name: str, path: str = ":memory:") -> PlatformRef:
-    """Build a ``PlatformRef`` for an in-process DuckDB database at ``path``."""
+    """Build a `PlatformRef` for an in-process DuckDB database.
+
+    Args:
+        name: A unique name identifying this platform connection.
+        path: The DuckDB database path. Defaults to `:memory:` (in-process).
+
+    Returns:
+        A serializable `PlatformRef` for the DuckDB database. Building the ref needs no
+        driver.
+    """
     return PlatformRef(name=name, kind="duckdb", config={"path": path})
 
 
 def postgres_platform(name: str, conninfo: str = "") -> PlatformRef:
-    """Build a ``PlatformRef`` for a PostgreSQL database.
+    """Build a `PlatformRef` for a PostgreSQL database.
 
-    ``conninfo`` is a libpq connection string (keyword/value or ``postgresql://`` URI);
-    empty uses libpq defaults / ``PG*`` env vars. Building the ref needs no driver.
+    Args:
+        name: A unique name identifying this platform connection.
+        conninfo: A libpq connection string (keyword/value or `postgresql://` URI). Empty
+            uses libpq defaults / `PG*` env vars.
+
+    Returns:
+        A serializable `PlatformRef` for the PostgreSQL database. Building the ref needs no
+        driver.
     """
     return PlatformRef(name=name, kind="postgres", config={"conninfo": conninfo})
 
@@ -57,7 +50,14 @@ def _build_postgres(ref: PlatformRef) -> PlatformAdapter:
 
 
 def _build(ref: PlatformRef) -> PlatformAdapter:
-    """Build a live adapter for ``ref`` by exhaustive dispatch over its kind."""
+    """Build a live adapter for `ref` by exhaustive dispatch over its kind.
+
+    Args:
+        ref: The platform reference to build an adapter for.
+
+    Returns:
+        A live `PlatformAdapter` for the reference's platform kind.
+    """
     kind: PlatformKind = ref.kind
     match kind:
         case "duckdb":
@@ -68,17 +68,23 @@ def _build(ref: PlatformRef) -> PlatformAdapter:
             assert_never(unreachable)
 
 
-# Session-global cache of live adapters, keyed by ``PlatformRef.name``. Owned by the
-# pytest plugin, which closes everything via ``close_all`` at session end.
 _ADAPTERS: dict[str, tuple[PlatformRef, PlatformAdapter]] = {}
 
 
 def resolve(ref: PlatformRef) -> PlatformAdapter:
-    """Return a live adapter for ``ref``, building and caching one on first use.
+    """Return a live adapter for `ref`, building and caching one on first use.
 
-    Reuses the cached adapter on subsequent calls for the same ``ref.name``. Raises
-    ``ValueError`` if the name is already bound to a different configuration. An unsupported
-    ``kind`` is unrepresentable — ``PlatformRef`` validation rejects it before resolution.
+    Reuses the cached adapter on subsequent calls for the same `ref.name`. An unsupported
+    `kind` is unrepresentable — `PlatformRef` validation rejects it before resolution.
+
+    Args:
+        ref: The platform reference to resolve.
+
+    Returns:
+        The live `PlatformAdapter` for `ref`, cached and reused across calls.
+
+    Raises:
+        ValueError: If `ref.name` is already bound to a different configuration.
     """
     cached = _ADAPTERS.get(ref.name)
     if cached is not None:

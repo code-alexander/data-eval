@@ -1,9 +1,4 @@
-"""Result-set equivalence engine.
-
-The permanent nucleus of data-eval: a pure function ``compare(...) -> ResultSetDiff | None``
-(``None`` means equivalent; errors-as-values, no exceptions). Every result-comparing scorer
-wraps this engine.
-"""
+"""Result-set equivalence engine: a pure `compare()` that every result-comparing scorer wraps."""
 
 from data_eval.equivalence.compare import compare
 from data_eval.equivalence.resultset import TypedResultSet, UntypedResultSet

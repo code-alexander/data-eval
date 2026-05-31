@@ -1,30 +1,4 @@
-"""The ``data-eval`` command-line interface: ``run`` and ``doctor``.
-
-Two Typer commands on one flat app (Typer's recommended shape for a small, non-namespaced
-CLI; ``add_typer`` is for sub-apps we don't have):
-
-* ``data-eval run [PATH] [pytest args...]`` — runs the suite via pytest. It is a thin,
-  faithful wrapper: pytest is invoked as a **subprocess** (``sys.executable -m pytest``),
-  not in-process ``pytest.main()``. Subprocess is what tox/nox and pytest's own docs use;
-  it forwards args cleanly (unknown args pass straight through via ``ctx.args``), honors the
-  project's ``addopts``, and isolates a hung/``sys.exit``-ing test from the CLI. Using
-  ``sys.executable -m pytest`` (not a bare ``pytest`` binary) keeps it correct under uv /
-  venv without depending on uv itself. The one thing ``run`` adds over bare pytest is the
-  ``--json`` opt-in, which forwards to the plugin's ``--data-eval-json`` artifact. The
-  plugin auto-loads via its ``pytest11`` entry point, so no ``-p`` injection is needed.
-
-* ``data-eval doctor`` — platform connection diagnostics. Args-only by design: there is no
-  project-level config yet, so platforms are passed as per-kind flags that map 1:1 to the
-  ``platforms.registry`` ref builders (``--duckdb PATH`` / ``--postgres CONNINFO``, each also
-  reading an env var). Each is resolved to a live adapter and probed with ``SELECT 1``;
-  results render as a Rich OK/FAIL checklist (dbt ``debug`` style). Connection failures
-  surface as a FAIL line — adapter construction may *raise* (e.g. psycopg can't connect), so
-  the probe catches broadly: a diagnostics command reports failures, it never crashes on one.
-
-A new platform kind is added in one place (``PlatformKind``); ``_build_refs`` then needs a
-flag for it (the ``test_doctor_covers_every_supported_kind`` drift test fails until it does),
-and ``registry.resolve`` already dispatches over the kind exhaustively (match/assert_never).
-"""
+"""The `data-eval` command-line interface."""
 
 import subprocess
 import sys
@@ -52,22 +26,38 @@ def run(
         help="Also write the structured data-eval results JSON to PATH (off by default).",
     ),
 ) -> None:
-    """Run the eval suite via pytest, forwarding any extra pytest arguments verbatim."""
+    """Run the eval suite via pytest, forwarding any extra pytest arguments verbatim.
+
+    Args:
+        ctx: The Typer context; its extra args are forwarded straight to pytest.
+        path: A path or test id to run; omit to use pytest's `testpaths`.
+        json_path: If given, also write the structured results JSON to this path.
+
+    Raises:
+        Exit: Always, carrying pytest's return code as the process exit code.
+    """
     cmd = [sys.executable, "-m", "pytest"]
     if path is not None:
         cmd.append(path)
     if json_path is not None:
         cmd.append(f"--data-eval-json={json_path}")
-    cmd.extend(ctx.args)  # unknown args (-k, -m, -x, plugin flags, ...) pass straight to pytest
+    cmd.extend(ctx.args)
     completed = subprocess.run(cmd)  # noqa: PLW1510 - exit code is forwarded, not raised on
     raise typer.Exit(completed.returncode)
 
 
 def _build_refs(*, duckdb: str | None, postgres: str | None) -> list[PlatformRef]:
-    """Build a ``PlatformRef`` for each platform flag that was provided.
+    """Build a `PlatformRef` for each platform flag that was provided.
 
     Each branch routes through the typed registry builder, so a flag can only ever name a
-    real ``PlatformKind``. The drift test asserts this covers every supported kind.
+    real `PlatformKind`.
+
+    Args:
+        duckdb: A DuckDB database path, or `None` if the flag was not given.
+        postgres: A PostgreSQL conninfo, or `None` if the flag was not given.
+
+    Returns:
+        One `PlatformRef` per flag that was provided, in flag order.
     """
     refs: list[PlatformRef] = []
     if duckdb is not None:
@@ -78,11 +68,19 @@ def _build_refs(*, duckdb: str | None, postgres: str | None) -> list[PlatformRef
 
 
 def _probe(ref: PlatformRef) -> tuple[bool, str]:
-    """Resolve ``ref`` to a live adapter and run ``SELECT 1``; return (ok, detail).
+    """Resolve `ref` to a live adapter and run `SELECT 1`.
 
     Catches broadly on purpose: adapter construction can raise (e.g. psycopg fails to
-    connect, or an optional driver is missing), and ``doctor`` must report that as a FAIL
-    rather than crash. A query that fails as a value (``ExecutionResult.error``) is a FAIL too.
+    connect, or an optional driver is missing), and `doctor` must report that as a FAIL
+    rather than crash. A query that fails as a value (`ExecutionResult.error`) is a FAIL
+    too.
+
+    Args:
+        ref: The platform reference to probe.
+
+    Returns:
+        A tuple `(ok, detail)`: `ok` is whether the probe succeeded, and `detail` is a
+        human-readable status or error message.
     """
     try:
         result = resolve(ref).execute("SELECT 1")
@@ -106,7 +104,17 @@ def doctor(
         help='PostgreSQL libpq conninfo to check (empty "" uses PG* env vars / libpq defaults).',
     ),
 ) -> None:
-    """Check that the given platform connections work (one --<kind> flag per platform)."""
+    """Check that the given platform connections work (one --<kind> flag per platform).
+
+    Args:
+        duckdb: A DuckDB database path to check (also read from `DATA_EVAL_DUCKDB_PATH`).
+        postgres: A PostgreSQL conninfo to check (also read from
+            `DATA_EVAL_POSTGRES_CONNINFO`).
+
+    Raises:
+        BadParameter: If no platform flag is provided.
+        Exit: With code 1 if any platform connection fails.
+    """
     refs = _build_refs(duckdb=duckdb, postgres=postgres)
     if not refs:
         raise typer.BadParameter("specify at least one platform, e.g. --duckdb PATH or --postgres CONNINFO")

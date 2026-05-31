@@ -81,28 +81,28 @@ class TestTypedResultSet:
 @pytest.mark.unit
 class TestReconcileColumns:
     def test_identical_columns_ignore(self) -> None:
-        common, missing, extra, order = reconcile_columns(["a", "b"], ["a", "b"], "ignore")
-        assert common == ["a", "b"]
-        assert missing == []
-        assert extra == []
-        assert order is False
+        rec = reconcile_columns(["a", "b"], ["a", "b"], "ignore")
+        assert rec.in_both == ["a", "b"]
+        assert rec.missing == []
+        assert rec.unexpected == []
+        assert rec.order_mismatch is False
 
     def test_set_difference(self) -> None:
-        common, missing, extra, _ = reconcile_columns(["a", "c"], ["a", "b"], "ignore")
-        assert common == ["a"]
-        assert missing == ["b"]
-        assert extra == ["c"]
+        rec = reconcile_columns(["a", "c"], ["a", "b"], "ignore")
+        assert rec.in_both == ["a"]
+        assert rec.missing == ["b"]
+        assert rec.unexpected == ["c"]
 
     def test_strict_flags_positional_mismatch_with_equal_sets(self) -> None:
-        common, missing, extra, order = reconcile_columns(["b", "a"], ["a", "b"], "strict")
-        assert common == ["a", "b"]
-        assert missing == []
-        assert extra == []
-        assert order is True
+        rec = reconcile_columns(["b", "a"], ["a", "b"], "strict")
+        assert rec.in_both == ["a", "b"]
+        assert rec.missing == []
+        assert rec.unexpected == []
+        assert rec.order_mismatch is True
 
     def test_ignore_does_not_flag_order(self) -> None:
-        _, _, _, order = reconcile_columns(["b", "a"], ["a", "b"], "ignore")
-        assert order is False
+        rec = reconcile_columns(["b", "a"], ["a", "b"], "ignore")
+        assert rec.order_mismatch is False
 
 
 @pytest.mark.unit
@@ -260,12 +260,12 @@ class TestCompareColumnOrder:
         assert diff is not None
         assert diff.missing_columns == ["b"]
 
-    def test_extra_columns(self) -> None:
+    def test_unexpected_columns(self) -> None:
         a = _untyped([{"a": 1, "b": 2}])
         b = _untyped([{"a": 1}])
         diff = compare(a, b)
         assert diff is not None
-        assert diff.extra_columns == ["b"]
+        assert diff.unexpected_columns == ["b"]
 
 
 @pytest.mark.unit
@@ -378,7 +378,7 @@ class TestCompareEdgeCases:
         diff = compare(a, b)
         assert diff is not None
         assert diff.missing_columns == ["b"]
-        assert diff.extra_columns == ["a"]
+        assert diff.unexpected_columns == ["a"]
 
     def test_types_differ_only(self) -> None:
         a = _typed([{"n": 1}], ["n"], ["INTEGER"])

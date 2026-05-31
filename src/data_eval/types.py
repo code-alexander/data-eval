@@ -1,13 +1,15 @@
 """Core public Pydantic types for data-eval."""
 
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, NewType
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-# Only platforms with a shipped adapter are listed: this Literal *is* the supported set,
-# so dispatch over it (registry builders, CLI flags, default-dialect) is exhaustively
-# type-checked via match/assert_never. Adding a platform = add it here + handle it at every
-# match site (ty fails until you do). snowflake/bigquery/databricks land with their adapters.
+# A SQL string designated as a solver's runnable artifact. Static-only: at runtime it is a
+# plain `str`, so it flows transparently into anything that executes SQL; producing one
+# requires an explicit `Sql(...)`, which is where the "this string is SQL" claim is made.
+Sql = NewType("Sql", str)
+
+# The supported set: dispatch over this Literal is exhaustively type-checked (match/assert_never).
 PlatformKind = Literal["duckdb", "postgres"]
 
 SQLDialect = Literal[
@@ -196,23 +198,15 @@ class SolverError(BaseModel):
 
 
 class SolverOutput(BaseModel):
-    """A Solver's output; either a successful ``output`` artifact or an ``error``.
+    """A Solver's output: either a successful `output` artifact or an `error`.
 
-    Exactly one of ``output``/``error`` is set (enforced by a validator): a success
-    carries the executable artifact, a failure carries a typed ``SolverError``. This is
-    errors-as-values — an expected solver failure (timeout, rate limit, auth, empty
-    response) is a returned value, not a raised exception, so the runner can compose a
-    readable diagnostic and skip execution.
-
-    For SQL solvers ``output`` is the SQL to run. The Solver — not the runner or scorer —
-    owns any extraction from raw model text, since the SQL must be executed before any
-    scorer sees a result. A dedicated extraction/filter stage (BIRD / lm-eval-harness
-    style) is the planned home for fence stripping once an LLM-backed solver lands.
+    Exactly one of `output`/`error` is set (enforced by a validator). For SQL solvers,
+    `output` is the SQL to run.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    output: Annotated[str, Field(min_length=1)] | None = None
+    output: Annotated[Sql, Field(min_length=1)] | None = None
     error: SolverError | None = None
     prompt_tokens: Annotated[int, Field(ge=0)] | None = None
     completion_tokens: Annotated[int, Field(ge=0)] | None = None
@@ -222,7 +216,14 @@ class SolverOutput(BaseModel):
 
     @model_validator(mode="after")
     def _exactly_one_of_output_or_error(self) -> "SolverOutput":
-        """Enforce that exactly one of ``output``/``error`` is set."""
+        """Enforce that exactly one of `output`/`error` is set.
+
+        Returns:
+            The validated `SolverOutput`.
+
+        Raises:
+            ValueError: If Pydantic validation fails.
+        """
         if (self.output is None) == (self.error is None):
             raise ValueError("SolverOutput requires exactly one of 'output' or 'error' to be set")
         return self
@@ -268,13 +269,12 @@ class ResultSetDiff(BaseModel):
     actual_row_count: Annotated[int, Field(ge=0)]
     missing_row_count: Annotated[int, Field(ge=0)] = 0
     extra_row_count: Annotated[int, Field(ge=0)] = 0
-    # Bounded samples of the differing rows (not just counts) — GE `partial_unexpected_list`
-    # / datacompy `sample_mismatch` convention; capped by the engine so large mismatches
+    # Bounded samples of the differing rows, capped by the engine so large mismatches
     # stay readable. `*_row_count` give the full magnitude; these give concrete examples.
     sample_missing_rows: list[dict[str, Any]] = Field(default_factory=list)
     sample_extra_rows: list[dict[str, Any]] = Field(default_factory=list)
     missing_columns: list[str] = Field(default_factory=list)
-    extra_columns: list[str] = Field(default_factory=list)
+    unexpected_columns: list[str] = Field(default_factory=list)
     type_mismatches: list[TypeMismatch] = Field(default_factory=list)
     column_mismatches: list[ColumnMismatch] = Field(default_factory=list)
     column_order_mismatch: bool = False

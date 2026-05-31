@@ -1,10 +1,4 @@
-"""§9 acceptance: the full pytest-native surface end-to-end against a real DuckDB file.
-
-Dogfoods the headline UX — ``@eval_case`` with a dict ``expected`` and a ``duckdb_platform``
-ref, the plugin-injected ``case``, and ``assert_eval`` with NO explicit adapter (resolved
-from ``case.platform``). Uses ``CallableSolver`` so the chain is deterministic and CI-safe;
-the live-LLM path is covered separately by the PromptSolver e2e test.
-"""
+"""End-to-end test of the pytest-native surface against a real DuckDB file."""
 
 import tempfile
 from collections.abc import Iterator
@@ -17,8 +11,8 @@ from data_eval import CallableSolver, ResultSetEquivalence, assert_eval, eval_ca
 from data_eval.platforms import duckdb_platform
 from data_eval.types import EvalCase
 
-# Resolved at import (decoration) time, before fixtures run; the file is seeded by
-# ``_seed_db`` and opened lazily by ``assert_eval`` when the test executes.
+# Resolved at import (decoration) time, before fixtures run; the file is seeded by a
+# fixture and opened lazily when the test executes.
 _DB_PATH = Path(tempfile.mkdtemp(prefix="data_eval_accept_")) / "chinook.duckdb"
 _ROCK_SQL = "SELECT count(*) AS count FROM tracks WHERE genre = 'Rock'"
 

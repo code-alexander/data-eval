@@ -1,19 +1,4 @@
-"""``ResultSetEquivalence``: the v1 scorer — wraps the equivalence engine.
-
-Bridges the executed ``ExecutionResult`` and the case's ``ExpectedResultSet`` into the
-engine's ``TypedResultSet`` / ``UntypedResultSet`` inputs and delegates to ``compare()``.
-
-Type-comparison gating (matches pandas ``check_dtype`` / GE practice — never automatic
-unless both sides carry types): the **typed** path runs only when the expected outcome
-*and* the execution result both carry a schema; otherwise the **untyped** values-only
-path runs. The typed path needs a single SQLGlot dialect, taken from the case's
-``PlatformRef`` (explicit ``dialect`` override, else inferred from ``kind``).
-
-Errors-as-values: a failed query (``ExecutionResult.error``) becomes a failing
-``ScoreResult`` with an explanation, not a raised exception. Only a genuine
-misconfiguration — pairing this scorer with a non-``ExpectedResultSet`` expectation —
-raises, since that is programmer error.
-"""
+"""`ResultSetEquivalence`: result-set scorer wrapping the equivalence engine."""
 
 from typing import assert_never
 
@@ -35,9 +20,16 @@ SCORER_NAME = "result_set_equivalence"
 def _dialect_for(platform: PlatformRef) -> SQLDialect:
     """Resolve the SQLGlot dialect for a platform: explicit override, else inferred from kind.
 
-    Each ``PlatformKind`` maps to its like-named SQLGlot dialect, but the two are distinct
-    Literal types — the exhaustive ``match`` is the type-safe bridge (ty fails if a new kind
-    is left unmapped). A ``dialect`` override (e.g. DuckDB parsing Snowflake SQL) wins.
+    Each `PlatformKind` maps to its like-named SQLGlot dialect, but the two are distinct
+    Literal types — the exhaustive `match` is the type-safe bridge (ty fails if a new kind
+    is left unmapped).
+
+    Args:
+        platform: The platform reference to resolve a dialect for.
+
+    Returns:
+        The explicit `platform.dialect` override if set, else the dialect inferred from
+        `platform.kind` (e.g. DuckDB parsing Snowflake SQL is enabled by the override).
     """
     if platform.dialect is not None:
         return platform.dialect
@@ -52,10 +44,23 @@ def _dialect_for(platform: PlatformRef) -> SQLDialect:
 
 
 class ResultSetEquivalence:
-    """Scores a case by comparing its executed result set against its ``ExpectedResultSet``."""
+    """Scores a case by comparing its executed result set against its `ExpectedResultSet`."""
 
     def score(self, case: EvalCase, output: SolverOutput, result: ExecutionResult) -> ScoreResult:
-        """Compare ``result`` against ``case.expected``; pass iff the engine finds them equivalent."""
+        """Compare `result` against `case.expected`; pass iff the engine finds them equivalent.
+
+        Args:
+            case: The eval case, carrying the expected result set and platform.
+            output: The solver output (part of the `Scorer` protocol; unused here).
+            result: The executed result to compare against the expectation.
+
+        Returns:
+            A `ScoreResult` that passes when the result set matches the expectation; a
+            failed query yields a failing result with an explanation.
+
+        Raises:
+            TypeError: If `case.expected` is not an `ExpectedResultSet`.
+        """
         expected = case.expected
         if not isinstance(expected, ExpectedResultSet):
             msg = f"ResultSetEquivalence requires an ExpectedResultSet; got {type(expected).__name__}"

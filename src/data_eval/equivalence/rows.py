@@ -12,7 +12,18 @@ def rows_equal(
     null_equality: Literal["equal", "distinct"],
     float_tolerance: float,
 ) -> bool:
-    """True iff two rows have equal values across the given columns."""
+    """Check whether two rows have equal values across the given columns.
+
+    Args:
+        a: The first row, keyed by column name.
+        b: The second row, keyed by column name.
+        columns: The columns to compare.
+        null_equality: `"equal"` treats two NULLs as equal, `"distinct"` as unequal.
+        float_tolerance: Absolute tolerance for numeric comparison.
+
+    Returns:
+        `True` if every compared cell is equal under the given config.
+    """
     return all(cells_equal(a.get(c), b.get(c), null_equality, float_tolerance) for c in columns)
 
 
@@ -23,16 +34,24 @@ def match_multiset(
     null_equality: Literal["equal", "distinct"],
     float_tolerance: float,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Greedy multiset match; returns ``(missing_rows, extra_rows)``.
+    """Match expected rows against actual rows as multisets (greedy, order-insensitive).
 
-    ``missing_rows`` are expected rows with no actual match; ``extra_rows`` are the
-    actual rows left over. Counts are ``len(...)`` of each; the rows themselves let
-    callers surface a sample in diagnostics (GE ``partial_unexpected_list`` / datacompy
-    ``sample_mismatch`` convention). Each expected row consumes the first unmatched
-    actual row that equals it. O(n*m) worst case — acceptable for eval-sized result
-    sets (answers, not full tables). Best-effort under ambiguous tolerance matching;
-    the principled successor is key-aligned comparison (datacompy-style), planned
-    alongside the match-key increment.
+    Each expected row consumes the first unmatched actual row that equals it. O(n*m) worst
+    case — acceptable for eval-sized result sets (answers, not full tables). Best-effort
+    under ambiguous tolerance matching; the principled successor is key-aligned comparison
+    (datacompy-style), planned alongside the match-key increment.
+
+    Args:
+        actual: The actual rows.
+        expected: The expected rows.
+        columns: The columns to compare when testing row equality.
+        null_equality: `"equal"` treats two NULLs as equal, `"distinct"` as unequal.
+        float_tolerance: Absolute tolerance for numeric comparison.
+
+    Returns:
+        A tuple `(missing_rows, extra_rows)`: `missing_rows` are expected rows with no
+        actual match; `extra_rows` are the actual rows left over. The rows themselves (not
+        just counts) let callers surface a sample in diagnostics.
     """
     remaining = list(range(len(actual)))
     missing_rows: list[dict[str, Any]] = []

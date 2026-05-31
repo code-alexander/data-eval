@@ -1,4 +1,4 @@
-"""Core orchestration: the runner and the pytest-facing ``assert_eval``."""
+"""Core orchestration: the runner and the pytest-facing `assert_eval`."""
 
 from data_eval.core.runner import assert_eval
 

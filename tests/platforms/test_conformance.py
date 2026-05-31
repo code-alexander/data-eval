@@ -1,12 +1,4 @@
-"""Shared ``PlatformAdapter`` conformance battery.
-
-Free-function tests parametrised over every registered adapter via the
-``under_test`` fixture in ``conftest.py``. Each test asserts one behavioural
-property of the ``PlatformAdapter`` contract using the dialect-specific SQL
-that adapter supplied in its concrete ``ConformanceFixtures`` dataclass.
-
-An adapter is "done" when every test in this module passes for its ID.
-"""
+"""Shared `PlatformAdapter` conformance battery, parametrised over every adapter via `under_test`."""
 
 from data_eval.platforms.base import PlatformAdapter
 

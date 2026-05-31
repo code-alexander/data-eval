@@ -1,23 +1,4 @@
-"""Eval orchestration and the pytest-facing assertion.
-
-``assert_eval`` chains the slice end-to-end: the Solver produces SQL, the platform
-adapter executes it, each Scorer compares the result, and any failure is raised as an
-``AssertionError`` carrying a readable diagnostic. The library stays errors-as-values
-throughout (``ExecutionResult.error``, ``ScoreResult.passed``); only this thin wrapper
-raises, because raising *is* pytest's failure protocol.
-
-Adapter resolution (GE-style dual rule): an explicitly passed ``adapter`` always wins —
-typically a pytest fixture that owns its own connection lifecycle. When ``adapter`` is
-omitted, the live adapter is resolved from the case's ``PlatformRef`` via
-``platforms.registry.resolve``, which caches it session-globally and closes it at session
-end (the pytest plugin's ``pytest_sessionfinish`` hook). So ``assert_eval`` never closes a
-resolved adapter mid-run — reuse across cases is the point — and never closes a
-caller-supplied one (the caller owns it).
-
-Message composition follows prevailing practice (GE/DeepEval/Inspect): the originating
-input/SQL is *not* stored on ``ScoreResult`` — it is composed (in ``reporting.terminal``)
-from the case, the solver output, and the execution result, alongside the structured diff.
-"""
+"""Eval orchestration and the pytest-facing `assert_eval`."""
 
 from collections.abc import Sequence
 
@@ -37,12 +18,22 @@ def assert_eval(
     scorers: Sequence[Scorer],
     adapter: PlatformAdapter | None = None,
 ) -> None:
-    """Run ``case`` through ``solver`` + a platform adapter + ``scorers``; raise on any failure.
+    """Run `case` through `solver` + a platform adapter + `scorers`; raise on any failure.
 
-    Solves the case, executes the produced SQL, scores the result with each scorer, and
-    raises ``AssertionError`` with a composed diagnostic if any scorer fails. The adapter is
-    the explicitly passed ``adapter`` if given, otherwise resolved (and session-cached) from
-    ``case.platform``. Returns ``None`` on success (pytest-friendly).
+    Solves the case, executes the produced SQL, and scores the result with each scorer.
+    The adapter is the explicitly passed `adapter` if given, otherwise resolved (and
+    session-cached) from `case.platform`.
+
+    Args:
+        case: The eval case to run.
+        solver: The solver that produces SQL for the case.
+        scorers: Scorers applied to the execution result; all must pass.
+        adapter: A platform adapter to execute against. If omitted, one is resolved and
+            session-cached from `case.platform`.
+
+    Raises:
+        AssertionError: If the solver fails or any scorer fails, carrying a composed
+            diagnostic. Raising is pytest's failure protocol.
     """
     output = solver.solve(case)
     if output.error is not None:

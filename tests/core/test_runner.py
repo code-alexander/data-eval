@@ -1,8 +1,4 @@
-"""End-to-end slice test: EvalCase -> CallableSolver -> DuckDB -> ResultSetEquivalence -> assert_eval.
-
-Hermetic and CI-runnable: an in-memory DuckDB seeded with a tiny table, a deterministic
-no-LLM solver, and the real scorer. Proves the full chain and the failure-message content.
-"""
+"""End-to-end slice test: EvalCase -> CallableSolver -> DuckDB -> ResultSetEquivalence -> assert_eval."""
 
 from collections.abc import Iterator
 from pathlib import Path
@@ -68,7 +64,7 @@ class TestAssertEvalEndToEnd:
             assert_eval(case, solver, adapter=duck, scorers=[ResultSetEquivalence()])
         msg = str(exc.value)
         assert "missing columns" in msg
-        assert "extra columns" in msg
+        assert "unexpected columns" in msg
 
 
 @pytest.mark.unit
@@ -89,7 +85,7 @@ class TestAssertEvalAdapterResolution:
         assert_eval(case, solver, scorers=[ResultSetEquivalence()])  # no adapter, no raise == pass
 
     # An unsupported platform kind is unrepresentable (PlatformRef validation rejects it),
-    # so there is no runtime "no adapter" path to test here; see TestPlatformRef in test_types.
+    # so there is no runtime "no adapter" path to test here.
 
 
 class _ErrorSolver:

@@ -14,7 +14,7 @@ def _reset_global_state() -> Iterator[None]:
 
     In production the plugin closes the adapter cache at session end and the run
     accumulator lives for the process; for our own suite we clear both per test so cached
-    adapters (and ``PlatformRef.name`` bindings) and recorded case outcomes never leak
+    adapters (and `PlatformRef.name` bindings) and recorded case outcomes never leak
     across tests — and the data-eval run summary stays out of our own pytest output.
     """
     yield

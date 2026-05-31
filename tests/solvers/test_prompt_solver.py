@@ -1,9 +1,4 @@
-"""Tests for ``PromptSolver`` — the litellm-backed solver.
-
-Hermetic by default: every unit test monkeypatches ``litellm.completion`` (and, where
-relevant, ``litellm.completion_cost``) so nothing touches the network or needs an API
-key. The single e2e test is skipped unless ``OPENAI_API_KEY`` is set.
-"""
+"""Tests for `PromptSolver` — the litellm-backed solver."""
 
 import os
 import types

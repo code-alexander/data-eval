@@ -1,9 +1,4 @@
-"""Tests for the ``data-eval`` CLI (``run`` and ``doctor``).
-
-``run`` arg-forwarding is asserted by stubbing ``subprocess.run`` (precise, no real pytest);
-one integration test then spawns a real pytest to prove the CLI -> pytest -> plugin ->
-artifact chain end-to-end. ``doctor`` is exercised against a live in-process DuckDB.
-"""
+"""Tests for the `data-eval` CLI (`run` and `doctor`)."""
 
 import subprocess
 import sys
@@ -94,8 +89,7 @@ class TestDoctor:
         assert "specify at least one platform" in result.output
 
     def test_covers_every_supported_kind(self) -> None:
-        # Drift guard: doctor must build a ref for every supported PlatformKind. Adding a
-        # kind without a doctor flag fails here. (Builds refs only — no connection attempted.)
+        # Builds refs only — no connection attempted.
         refs = _build_refs(duckdb=":memory:", postgres="")
         assert {ref.kind for ref in refs} == set(get_args(PlatformKind))
 

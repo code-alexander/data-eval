@@ -1,18 +1,4 @@
-"""``DuckDBAdapter``: in-process DuckDB execution backend.
-
-Conforms to ``PlatformAdapter``. Uses ``duckdb`` directly (no SQLAlchemy) and
-reports native DuckDB type strings via the cursor's ``description``: each
-``description[i][1]`` is a ``DuckDBPyType`` whose ``str()`` yields the type
-SQLGlot's ``duckdb`` dialect parses (``INTEGER``, ``STRUCT(a INTEGER, b VARCHAR)``,
-``INTEGER[]``, ...). All query failures surface as ``duckdb.Error`` and are
-returned via ``ExecutionResult.error`` rather than raised.
-
-Connection lifecycle is owned by the adapter: ``close()`` and the context-manager
-protocol (``__enter__`` / ``__exit__``) release the underlying handle. Documented
-for DuckDB (issue #3573) and required on Windows where WAL file locks (issue #1365)
-make ``del``-based cleanup unreliable. These are NOT on the ``PlatformAdapter``
-Protocol — adapters may offer them as a convention.
-"""
+"""`DuckDBAdapter`: in-process DuckDB execution backend."""
 
 import time
 from types import TracebackType
@@ -27,15 +13,18 @@ class DuckDBAdapter:
     """Executes SQL against an in-process DuckDB database."""
 
     def __init__(self, database: str = ":memory:") -> None:
-        """Open a DuckDB connection to ``database`` (default ``:memory:``)."""
+        """Open a DuckDB connection to `database` (default `:memory:`)."""
         self._conn = duckdb.connect(database)
 
     def close(self) -> None:
-        """Release the underlying DuckDB connection (file handle / WAL lock)."""
+        """Release the underlying DuckDB connection (file handle / WAL lock).
+
+        Explicit close matters on Windows, where WAL locks make implicit cleanup unreliable.
+        """
         self._conn.close()
 
     def __enter__(self) -> Self:
-        """Return self; the connection is already open from ``__init__``."""
+        """Return self; the connection is already open from `__init__`."""
         return self
 
     def __exit__(
@@ -48,7 +37,15 @@ class DuckDBAdapter:
         self.close()
 
     def execute(self, sql: str) -> ExecutionResult:
-        """Execute one SQL statement; return rows + schema + latency, or error-as-value."""
+        """Execute one SQL statement against the database.
+
+        Args:
+            sql: The SQL statement to execute.
+
+        Returns:
+            An `ExecutionResult` with the returned rows, schema, and latency. Query
+            failures are returned as `ExecutionResult.error` rather than raised.
+        """
         start = time.perf_counter()
         try:
             cursor = self._conn.execute(sql)

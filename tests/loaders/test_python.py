@@ -1,4 +1,4 @@
-"""Unit tests for the ``@eval_case`` decorator and its dict->Expected coercion."""
+"""Unit tests for the `@eval_case` decorator and its dict->Expected coercion."""
 
 import pytest
 from pydantic import ValidationError

@@ -676,7 +676,7 @@ class TestResultSetDiff:
         assert diff.missing_row_count == 0
         assert diff.extra_row_count == 0
         assert diff.missing_columns == []
-        assert diff.extra_columns == []
+        assert diff.unexpected_columns == []
         assert diff.type_mismatches == []
         assert diff.column_mismatches == []
         assert diff.column_order_mismatch is False
@@ -688,7 +688,7 @@ class TestResultSetDiff:
             missing_row_count=3,
             extra_row_count=1,
             missing_columns=["revenue"],
-            extra_columns=["unused"],
+            unexpected_columns=["unused"],
             type_mismatches=[TypeMismatch(column="id", expected="INTEGER", actual="BIGINT")],
             column_mismatches=[ColumnMismatch(column="name", unexpected_count=2)],
         )

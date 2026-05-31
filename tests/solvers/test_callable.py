@@ -1,4 +1,4 @@
-"""Tests for ``CallableSolver`` — the hermetic no-LLM solver."""
+"""Tests for `CallableSolver` — the hermetic no-LLM solver."""
 
 import pytest
 
