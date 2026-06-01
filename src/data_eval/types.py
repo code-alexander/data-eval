@@ -211,7 +211,7 @@ class ColumnTypeExpectation(BaseModel):
 
     kind: Literal["column_type"] = "column_type"
     column: Annotated[str, Field(min_length=1)]
-    expected_type: Annotated[str, Field(min_length=1)]
+    expected_type: SqlType
 
 
 class NotNullExpectation(BaseModel):
@@ -315,6 +315,24 @@ class EvalCase(BaseModel):
                     for c in self.expected.schema_
                 ]
             )
+        return self
+
+    @model_validator(mode="after")
+    def _canonicalize_expectation_types(self) -> "EvalCase":
+        """Canonicalise each `ColumnTypeExpectation`'s type in the case's dialect.
+
+        The type is authored as a native string whose dialect is the platform's. Re-build
+        `expected_type` via `SqlType.parse` so `canonical` is populated at the ingestion
+        boundary and type comparison is dialect-free downstream.
+
+        Returns:
+            The validated `EvalCase`.
+        """
+        if isinstance(self.expected, ExpectationSuite):
+            dialect = self.platform.dialect or self.platform.kind
+            for expectation in self.expected.expectations:
+                if isinstance(expectation, ColumnTypeExpectation):
+                    expectation.expected_type = SqlType.parse(expectation.expected_type.raw, dialect)
         return self
 
 

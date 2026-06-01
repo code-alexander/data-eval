@@ -317,7 +317,8 @@ class TestExpectations:
     def test_column_type_construction(self) -> None:
         e = ColumnTypeExpectation(column="id", expected_type="INTEGER")
         assert e.column == "id"
-        assert e.expected_type == "INTEGER"
+        assert e.expected_type == SqlType(raw="INTEGER")
+        assert e.expected_type.raw == "INTEGER"
 
     def test_not_null_construction(self) -> None:
         e = NotNullExpectation(column="email")
@@ -505,6 +506,23 @@ class TestEvalCase:
     def test_accepts_expectation_suite(self) -> None:
         case = _make_case(expected=ExpectationSuite(expectations=[RowCountExpectation(exact=10)]))
         assert isinstance(case.expected, ExpectationSuite)
+
+    def test_canonicalizes_column_type_expectation(self) -> None:
+        case = _make_case(
+            expected=ExpectationSuite(
+                expectations=[
+                    ColumnTypeExpectation(column="id", expected_type="INT"),
+                    RowCountExpectation(exact=1),
+                ]
+            ),
+        )
+        suite = case.expected
+        assert isinstance(suite, ExpectationSuite)
+        column_type = suite.expectations[0]
+        assert isinstance(column_type, ColumnTypeExpectation)
+        assert column_type.expected_type.canonical is not None
+        assert column_type.expected_type == SqlType.parse("INTEGER", "duckdb")
+        assert suite.expectations[1] == RowCountExpectation(exact=1)
 
     def test_json_round_trip(self) -> None:
         case = _make_case()
