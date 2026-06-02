@@ -4,6 +4,7 @@ import re
 import time
 
 import litellm
+from pydantic import BaseModel, ValidationError
 
 from data_eval.types import EvalCase, SolverError, SolverErrorKind, SolverOutput, Sql
 
@@ -15,6 +16,37 @@ SQL:
 """
 
 _FENCE_RE = re.compile(r"```(?:sql)?\s*([\s\S]*?)```", re.IGNORECASE)
+
+
+class SqlOutput(BaseModel):
+    """Structured solver reply: the generated SQL query."""
+
+    sql: str
+
+
+def _extract_structured_sql(content: str | None) -> Sql | SolverError:
+    """Parse a structured `{sql: ...}` reply, returning the SQL or a typed error.
+
+    Empty or absent content is normalised to `{}` so a missing reply surfaces as the same
+    schema-validation failure as malformed JSON, rather than being special-cased.
+
+    Args:
+        content: The raw model reply, expected to be a JSON object matching `SqlOutput`.
+
+    Returns:
+        The stripped SQL (possibly empty when the `sql` field is empty), or a `SolverError`
+        of kind `invalid_structured_output` when the content does not validate against
+        `SqlOutput`.
+    """
+    try:
+        reply = SqlOutput.model_validate_json(content or "{}")
+    except ValidationError:
+        return SolverError(
+            kind="invalid_structured_output",
+            message=f"model returned malformed structured output: {(content or '')[:200]!r}",
+            provider=None,
+        )
+    return Sql(reply.sql.strip())
 
 
 def _extract_sql(text: str) -> str:
@@ -60,8 +92,10 @@ class PromptSolver:
         """Produce SQL for `case`, returning a success or a typed `SolverError`.
 
         Renders the prompt from the case's dialect (or platform kind) and input, calls the
-        model, and extracts the SQL. Expected provider failures are mapped to a
-        `SolverError` and returned as `SolverOutput.error` (errors-as-values).
+        model, and extracts the SQL. When the model supports structured outputs the SQL is
+        requested in a typed field and read back directly; otherwise it is recovered from the
+        reply text by stripping a Markdown code fence. Expected provider failures are mapped
+        to a `SolverError` and returned as `SolverOutput.error` (errors-as-values).
 
         Args:
             case: The eval case to solve.
@@ -73,9 +107,13 @@ class PromptSolver:
         dialect = case.platform.dialect or case.platform.kind
         rendered = self._prompt_template.format_map({"dialect": dialect, "input": case.input})
         messages = [{"role": "user", "content": rendered}]
+        structured = litellm.supports_response_schema(model=self._model)
+        kwargs: dict = {"model": self._model, "messages": messages, "timeout": self._timeout}
+        if structured:
+            kwargs["response_format"] = SqlOutput
         start = time.perf_counter()
         try:
-            response = litellm.completion(model=self._model, messages=messages, timeout=self._timeout)
+            response = litellm.completion(**kwargs)
         except litellm.Timeout as e:
             return SolverOutput(error=self._error("timeout", e))
         except litellm.RateLimitError as e:
@@ -93,7 +131,13 @@ class PromptSolver:
         elapsed = time.perf_counter() - start
 
         content = response.choices[0].message.content
-        sql = _extract_sql(content) if content is not None else ""
+        if structured:
+            extracted = _extract_structured_sql(content)
+            if isinstance(extracted, SolverError):
+                return SolverOutput(error=extracted)
+            sql = extracted
+        else:
+            sql = _extract_sql(content) if content is not None else ""
         if not sql:
             return SolverOutput(
                 error=SolverError(kind="empty_response", message="model returned no SQL", provider=None)

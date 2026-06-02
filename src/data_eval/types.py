@@ -345,6 +345,7 @@ SolverErrorKind = Literal[
     "api_connection",
     "api_error",
     "empty_response",
+    "invalid_structured_output",
 ]
 
 

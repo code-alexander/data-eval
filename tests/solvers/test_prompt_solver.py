@@ -7,7 +7,7 @@ import litellm
 import pytest
 
 from data_eval.solvers import Solver
-from data_eval.solvers.prompt import PromptSolver
+from data_eval.solvers.prompt import PromptSolver, SqlOutput
 from data_eval.types import EvalCase, ExpectedResultSet, PlatformRef, SQLDialect
 
 _E2E_MODEL = "openai/gpt-4o-mini"
@@ -30,13 +30,16 @@ def _stub_response(content: str | None, *, prompt_tokens: int = 3, completion_to
     return types.SimpleNamespace(choices=[choice], usage=usage, model=model)
 
 
-def _patch_completion(monkeypatch: pytest.MonkeyPatch, response, captured: dict | None = None) -> None:
+def _patch_completion(
+    monkeypatch: pytest.MonkeyPatch, response, captured: dict | None = None, *, structured: bool = False
+) -> None:
     def fake(**kwargs):
         if captured is not None:
             captured.update(kwargs)
         return response
 
     monkeypatch.setattr("litellm.completion", fake)
+    monkeypatch.setattr("litellm.supports_response_schema", lambda **kwargs: structured)
 
 
 @pytest.mark.unit
@@ -89,6 +92,48 @@ class TestPromptSolver:
         out = PromptSolver(model="m").solve(_case())
         assert out.error is not None
         assert out.error.kind == "empty_response"
+
+    def test_structured_output_returns_sql(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict = {}
+        _patch_completion(monkeypatch, _stub_response('{"sql": "SELECT 1"}'), captured, structured=True)
+        out = PromptSolver(model="gpt-4o-mini").solve(_case())
+        assert out.error is None
+        assert out.output == "SELECT 1"
+        assert captured["response_format"] is SqlOutput
+
+    def test_unsupported_model_falls_back_to_regex(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict = {}
+        _patch_completion(monkeypatch, _stub_response("```sql\nSELECT 9\n```"), captured, structured=False)
+        out = PromptSolver(model="m").solve(_case())
+        assert out.output == "SELECT 9"
+        assert "response_format" not in captured
+
+    def test_structured_malformed_json_is_invalid_structured_output(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch_completion(monkeypatch, _stub_response("SELECT 1 (not json)"), structured=True)
+        out = PromptSolver(model="gpt-4o-mini").solve(_case())
+        assert out.output is None
+        assert out.error is not None
+        assert out.error.kind == "invalid_structured_output"
+
+    def test_structured_empty_sql_field_is_empty_response(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch_completion(monkeypatch, _stub_response('{"sql": ""}'), structured=True)
+        out = PromptSolver(model="gpt-4o-mini").solve(_case())
+        assert out.error is not None
+        assert out.error.kind == "empty_response"
+
+    def test_structured_none_content_is_invalid_structured_output(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # No reply content normalises to `{}`, which fails schema validation (sql is required).
+        _patch_completion(monkeypatch, _stub_response(None), structured=True)
+        out = PromptSolver(model="gpt-4o-mini").solve(_case())
+        assert out.output is None
+        assert out.error is not None
+        assert out.error.kind == "invalid_structured_output"
+
+    def test_structured_whitespace_content_is_invalid_structured_output(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch_completion(monkeypatch, _stub_response("   \n "), structured=True)
+        out = PromptSolver(model="gpt-4o-mini").solve(_case())
+        assert out.error is not None
+        assert out.error.kind == "invalid_structured_output"
 
     def test_token_and_cost_mapping(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _patch_completion(monkeypatch, _stub_response("SELECT 1", prompt_tokens=11, completion_tokens=7))
