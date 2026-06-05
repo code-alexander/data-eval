@@ -369,30 +369,42 @@ def except_all_sample(left: exp.Query, right: exp.Query, dialect: Dialect) -> Sq
     return Sql(query.sql(dialect=dialect))
 
 
-# Per-side row-presence markers, projected as constant `TRUE` columns before the FULL OUTER
-# JOIN; a `NULL` marker after the join means that side contributed no row for the key.
-_EXPECTED_PRESENT = "e_present"
-_ACTUAL_PRESENT = "a_present"
-
 # Aliases pinning each side's columns through the join, so `e."order"`/`a."order"` survive as
 # distinct `j."e__order"`/`j."a__order"` regardless of the user's column names.
 _EXPECTED_PREFIX = "e__"
 _ACTUAL_PREFIX = "a__"
 
+# Per-side row-presence markers, projected as constant `TRUE` columns inside each operand;
+# a `NULL` marker after the FULL OUTER JOIN means that side contributed no row for the key.
+# Single-underscore names cannot collide with the double-underscore column prefixes, so a user
+# column of any name (already renamed to `e__<col>`/`a__<col>`) is safe alongside them.
+_EXPECTED_PRESENT = "e_present"
+_ACTUAL_PRESENT = "a_present"
 
-def _marked_operand(relation: exp.Query, alias: str, marker: str) -> exp.Subquery:
-    """Wrap `relation` as `(SELECT *, TRUE AS <marker> FROM (<relation>)) AS <alias>`.
+
+def _marked_operand(relation: exp.Query, prefix: str, marker: str, in_both: list[str], alias: str) -> exp.Subquery:
+    """Wrap `relation`, renaming its columns to `<prefix><col>` and adding a `TRUE` marker.
+
+    Renaming inside the operand (rather than `SELECT *`) keeps every user column under the
+    double-underscore prefix, so the single-underscore presence marker can never collide with
+    a user column of any name.
 
     Args:
         relation: The side relation (expected or actual), projecting the shared columns.
-        alias: The subquery alias the join qualifies columns by.
+        prefix: The side prefix (`e__` or `a__`) applied to each shared column.
         marker: The constant-`TRUE` presence-marker column name.
+        in_both: The shared columns to project, in expected order.
+        alias: The subquery alias the join qualifies columns by.
 
     Returns:
-        A `Subquery` carrying the shared columns plus the presence marker.
+        A `Subquery` exposing `<prefix><col>` for each shared column plus the presence marker.
     """
     inner = exp.Subquery(this=relation.copy(), alias=exp.TableAlias(this=exp.to_identifier("m")))
-    marked = exp.select(exp.Star()).from_(inner).select(exp.convert(True).as_(exp.to_identifier(marker)))
+    selections: list[exp.Expression] = [
+        exp.column(col, quoted=True).as_(exp.to_identifier(f"{prefix}{col}", quoted=True)) for col in in_both
+    ]
+    selections.append(exp.convert(True).as_(exp.to_identifier(marker)))
+    marked = exp.select(*selections).from_(inner)
     return exp.Subquery(this=marked, alias=exp.TableAlias(this=exp.to_identifier(alias)))
 
 
@@ -405,9 +417,9 @@ def _keyed_join(
 ) -> exp.Subquery:
     """Build the `FULL OUTER JOIN` of expected and actual, aligned on `key_columns`.
 
-    Each side is marked with a presence column and projected with `e__`/`a__`-prefixed
-    aliases; the join condition is `e.<k> = a.<k>` ANDed over the key columns (collision-free
-    and hash-joinable on both engines, unlike a null-safe operator which Postgres rejects in a
+    Each side renames its columns to `e__`/`a__`-prefixed names and carries a presence marker;
+    the join condition is `e.<k> = a.<k>` ANDed over the key columns (collision-free and
+    hash-joinable on both engines, unlike a null-safe operator which Postgres rejects in a
     `FULL JOIN`). A `NULL` in a key column never aligns, so such rows surface as missing/extra.
 
     Args:
@@ -421,25 +433,21 @@ def _keyed_join(
         A `Subquery` aliased `j` exposing `j."e__<col>"`, `j."a__<col>"`, `e_present`,
         and `a_present`.
     """
-    expected = _marked_operand(expected_rel, "e", _EXPECTED_PRESENT)
-    actual = _marked_operand(actual_rel, "a", _ACTUAL_PRESENT)
+    expected = _marked_operand(expected_rel, _EXPECTED_PREFIX, _EXPECTED_PRESENT, in_both, "e")
+    actual = _marked_operand(actual_rel, _ACTUAL_PREFIX, _ACTUAL_PRESENT, in_both, "a")
     condition = exp.and_(
         *(
             exp.EQ(
-                this=exp.column(key, table="e", quoted=True),
-                expression=exp.column(key, table="a", quoted=True),
+                this=exp.column(f"{_EXPECTED_PREFIX}{key}", table="e", quoted=True),
+                expression=exp.column(f"{_ACTUAL_PREFIX}{key}", table="a", quoted=True),
             )
             for key in key_columns
         )
     )
     projections: list[exp.Expression] = []
     for col in in_both:
-        projections.append(
-            exp.column(col, table="e", quoted=True).as_(exp.to_identifier(f"{_EXPECTED_PREFIX}{col}", quoted=True))
-        )
-        projections.append(
-            exp.column(col, table="a", quoted=True).as_(exp.to_identifier(f"{_ACTUAL_PREFIX}{col}", quoted=True))
-        )
+        projections.append(exp.column(f"{_EXPECTED_PREFIX}{col}", table="e", quoted=True))
+        projections.append(exp.column(f"{_ACTUAL_PREFIX}{col}", table="a", quoted=True))
     projections.append(exp.column(_EXPECTED_PRESENT, table="e"))
     projections.append(exp.column(_ACTUAL_PRESENT, table="a"))
     joined = exp.select(*projections).from_(expected).join(actual, on=condition, join_type="full outer")

@@ -428,3 +428,32 @@ def test_keyed_non_numeric_equal_null_value_passes(engine: tuple[PlatformAdapter
     model = "SELECT 1 AS id, CAST(NULL AS VARCHAR) AS name"
     score = _score(engine, model, expected, _keyed(["id"]))
     assert score.passed is True
+
+
+def test_keyed_value_columns_named_like_internal_markers(engine: tuple[PlatformAdapter, Dialect]) -> None:
+    # Value columns named `e_present`/`a_present` must not collide with the internal presence
+    # markers (ambiguous-column on Postgres / silently wrong counts on DuckDB if they did).
+    _, dialect = engine
+    schema = _schema(("id", "INTEGER"), ("e_present", "INTEGER"), ("a_present", "INTEGER"), dialect=dialect)
+    expected = ExpectedResultSet(rows=[{"id": 1, "e_present": 10, "a_present": 20}], schema=schema)
+    score = _score(engine, "SELECT 1 AS id, 99 AS e_present, 20 AS a_present", expected, _keyed(["id"]))
+    assert score.passed is False
+    assert score.diff is not None
+    assert score.diff.missing_row_count == 0
+    assert score.diff.extra_row_count == 0
+    assert len(score.diff.column_mismatches) == 1
+    assert score.diff.column_mismatches[0].column == "e_present"
+
+
+def test_keyed_multiple_null_keys_not_rejected(engine: tuple[PlatformAdapter, Dialect]) -> None:
+    # Two NULL-keyed rows on a side never collide under `=`, so they are not a duplicate key;
+    # each surfaces as missing/extra instead of triggering a rejection.
+    _, dialect = engine
+    expected = ExpectedResultSet(rows=[{"id": None, "v": 10}, {"id": None, "v": 20}], schema=_id_v_schema(dialect))
+    model = "SELECT CAST(NULL AS INTEGER) AS id, 10 AS v UNION ALL SELECT CAST(NULL AS INTEGER), 20"
+    score = _score(engine, model, expected, _keyed(["id"]))
+    assert score.passed is False
+    assert score.diff is not None
+    assert score.explanation is None
+    assert score.diff.missing_row_count == 2
+    assert score.diff.extra_row_count == 2
