@@ -1,0 +1,185 @@
+[project]
+name = "data-eval"
+version = "0.1.0"
+description = "AI evals framework for data & analytics engineering teams."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+    { name = "code-alexander", email = "152750039+code-alexander@users.noreply.github.com" }
+]
+requires-python = ">=3.11"
+keywords = [
+    "ai", "evals", "evaluation", "sql", "data", "testing",
+    "snowflake", "bigquery", "databricks", "duckdb", "postgres",
+    "pytest", "llm", "text-to-sql",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: Pytest",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Database",
+    "Typing :: Typed",
+]
+dependencies = [
+    "duckdb>=1.5.3",
+    "pyarrow>=24.0.0",
+    "pydantic>=2.13.4",
+    "pytest>=9.0.3",
+    "rich>=15.0.0",
+    "sqlglot>=30.8.0",
+    "typer>=0.25.1",
+]
+
+[project.optional-dependencies]
+postgres = [
+    "psycopg[binary]>=3.3.4",
+]
+snowflake = [
+    "snowflake-connector-python>=4.5.0",
+]
+bigquery = [
+    "google-cloud-bigquery>=3.41.0",
+    "google-cloud-bigquery-storage>=2.38.0",
+]
+databricks = [
+    "databricks-sql-connector>=4.2.6",
+]
+litellm = [
+    "litellm>=1.85.1",
+]
+tracing = [
+    "openinference-instrumentation>=0.1.52",
+    "opentelemetry-exporter-otlp>=1.42.1",
+    "opentelemetry-sdk>=1.42.1",
+]
+all-platforms = [
+    "data-eval[postgres,snowflake,bigquery,databricks]",
+]
+all = [
+    "data-eval[all-platforms,litellm,tracing]",
+]
+
+[project.urls]
+Homepage = "https://github.com/code-alexander/data-eval"
+Repository = "https://github.com/code-alexander/data-eval"
+Issues = "https://github.com/code-alexander/data-eval/issues"
+
+# The `data-eval` console command. Points straight at the Typer `app` object (a Typer
+# instance is callable) — the form the Typer packaging tutorial shows.
+[project.scripts]
+data-eval = "data_eval.cli:app"
+
+# Registers the data-eval pytest plugin (the `case` fixture + session-end adapter
+# cleanup) automatically on install, so `pytest tests/` works with zero conftest setup.
+[project.entry-points.pytest11]
+data_eval = "data_eval.pytest_plugin.plugin"
+
+[build-system]
+requires = ["uv_build>=0.8.19,<0.9.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "coverage[toml]>=7.14.0",
+    "pre-commit>=4.6.0",
+    "pytest-cov>=7.1.0",
+    "pytest-xdist>=3.8.0",
+    "ruff>=0.15.14",
+    "ty>=0.0.39",
+]
+
+[tool.uv]
+default-groups = ["dev"]
+
+# ---------------------------------------------------------------------------
+# Ruff
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# Astral's recommended balanced starter set. Grow by adding categories as needed.
+# https://docs.astral.sh/ruff/linter/
+preview = true
+select = [
+    "E", "F", "I", "UP", "B", "SIM", "D", "EM",
+    "DOC102", "DOC201", "DOC202", "DOC402", "DOC403", "DOC501", "DOC502",
+]
+ignore = [
+    "E501",  # line length — formatter handles it
+    "B008",  # function-call-in-default-arg — Typer Option()/Argument() defaults in CLI signatures
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D", "DOC"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = ["data_eval"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+# ---------------------------------------------------------------------------
+# Pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests", "examples/01_deterministic"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--showlocals",
+]
+markers = [
+    "unit: pure-Python unit tests (no external services)",
+    "e2e: end-to-end tests against a real platform",
+]
+
+# ---------------------------------------------------------------------------
+# Coverage
+# ---------------------------------------------------------------------------
+[tool.coverage.run]
+branch = true
+source = ["src/data_eval", "examples/01_deterministic"]
+parallel = true
+omit = [
+    "tests/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+precision = 1
+exclude_also = [
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "@overload",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+]
+fail_under = 100
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+[tool.coverage.xml]
+output = "coverage.xml"
+
+[tool.coverage.json]
+output = "coverage.json"
+pretty_print = true

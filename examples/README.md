@@ -1,0 +1,55 @@
+# Examples
+
+Runnable, pytest-native `data-eval` examples using the product surface: `@eval_case`
+decorator + injected `case` fixture + `assert_eval`. Each file seeds its own
+`customers` + `orders` DuckDB in a tempdir via an autouse fixture.
+
+The three tiers differ in the **solver** — the AI system under test — against the same
+kind of cases. Swapping tiers is a one-line change:
+
+```python
+solver = CallableSolver(lambda c: "SELECT ...")        # 01: fixed SQL
+solver = PromptSolver(model="ollama_chat/llama3.2")    # 02: local Ollama model
+solver = PromptSolver(model="openai/gpt-4o-mini")      # 03: hosted model
+```
+
+## Tiers
+
+| Dir | Solver | Purpose | Needs |
+| --- | --- | --- | --- |
+| `01_deterministic` | `CallableSolver` (fixed SQL) | Exercises each expected-type and scorer with no model or network | nothing |
+| `02_local_ai` | `PromptSolver` → local Ollama | Runs a local model; no network egress | `data-eval[litellm]` + `ollama pull llama3.2` |
+| `03_hosted_ai` | `PromptSolver` → hosted model | Runs a hosted model; gated on an API key | `data-eval[litellm]` + `OPENAI_API_KEY` |
+
+### 01_deterministic
+The solver is a `CallableSolver` returning fixed SQL. One file covers the expected-types:
+an untyped result set (values only), a typed result set (values + column types), a
+`GoldQuery` (the reference query's *result* is compared, not its SQL text), and an
+`ExpectationSuite` (`row_count` / `not_null` / `unique`).
+
+### 02_local_ai
+`PromptSolver` calls a local Ollama model through litellm; nothing leaves your machine.
+Questions ask for plain column selections, whose output column names come from the table
+and are therefore stable, keeping exact-row `ResultSetEquivalence` scoring reliable. Swap
+the model string for a coder model (`ollama_chat/qwen2.5-coder:0.5b`) or a hosted one.
+
+### 03_hosted_ai
+Mirrors 02 against a hosted model (`openai/gpt-4o-mini` by default, override with
+`DATA_EVAL_MODEL`). The module skips when `OPENAI_API_KEY` is unset.
+
+## Running
+
+```bash
+# 01 — no extras:
+uv run pytest examples/01_deterministic -p no:randomly -q
+
+# 02 — needs litellm + a pulled model:
+uv sync --extra litellm && ollama pull llama3.2
+uv run pytest examples/02_local_ai -p no:randomly -q
+
+# 03 — skips without a key; runs with one:
+OPENAI_API_KEY=sk-... uv run pytest examples/03_hosted_ai -q
+```
+
+> The repo's default `pytest` is scoped to `tests/`, so `uv run pytest` does **not** collect
+> these examples. Point pytest at `examples/` explicitly, as above, to run them.
