@@ -75,6 +75,7 @@ class PromptSolver:
         model: str,
         prompt_template: str = DEFAULT_PROMPT_TEMPLATE,
         timeout: float | None = None,
+        temperature: float | None = None,
     ) -> None:
         """Configure the solver.
 
@@ -82,11 +83,14 @@ class PromptSolver:
             model: The litellm model identifier (e.g. `"openai/gpt-4o-mini"`). Required.
             prompt_template: A `str.format_map` template with `{dialect}` and
                 `{input}` fields. Defaults to `DEFAULT_PROMPT_TEMPLATE`.
-            timeout: Per-request timeout in seconds, passed to `litellm.completion`.
+            timeout: Per-request timeout in seconds.
+            temperature: Sampling temperature; `None` leaves the provider default.
+                Use `0` for deterministic output.
         """
         self._model = model
         self._prompt_template = prompt_template
         self._timeout = timeout
+        self._temperature = temperature
 
     def solve(self, case: EvalCase) -> SolverOutput:
         """Produce SQL for `case`, returning a success or a typed `SolverError`.
@@ -111,6 +115,8 @@ class PromptSolver:
         kwargs: dict = {"model": self._model, "messages": messages, "timeout": self._timeout}
         if structured:
             kwargs["response_format"] = SqlOutput
+        if self._temperature is not None:
+            kwargs["temperature"] = self._temperature
         start = time.perf_counter()
         try:
             response = litellm.completion(**kwargs)
