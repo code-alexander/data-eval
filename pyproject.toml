@@ -138,7 +138,7 @@ docstring-code-format = true
 # ---------------------------------------------------------------------------
 [tool.pytest.ini_options]
 minversion = "8.0"
-testpaths = ["tests", "examples/01_deterministic"]
+testpaths = ["tests", "examples/01_deterministic", "examples/02_local_ai"]
 addopts = [
     "-ra",
     "--strict-markers",

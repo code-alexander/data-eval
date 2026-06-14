@@ -1,5 +1,6 @@
 """Local-AI text-to-SQL example evals: a `PromptSolver` calling a local Ollama model."""
 
+import os
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
@@ -13,7 +14,10 @@ from data_eval.solvers import PromptSolver
 
 _DB_PATH = Path(tempfile.mkdtemp(prefix="data_eval_ex02_")) / "shop.duckdb"
 _PLATFORM = duckdb_platform(name="examples-local-ai", path=str(_DB_PATH))
-_MODEL = "ollama_chat/llama3.2"
+_MODEL = os.environ.get("DATA_EVAL_LOCAL_MODEL", "")
+if not _MODEL:
+    msg = "set DATA_EVAL_LOCAL_MODEL to your local model's id, e.g. ollama_chat/qwen2.5-coder:1.5b"
+    raise RuntimeError(msg)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -34,7 +38,7 @@ def _seed_db() -> Iterator[None]:
 )
 def test_select_order_ids(case: EvalCase) -> None:
     """Local model selects every order id; scored on exact rows."""
-    solver = PromptSolver(model=_MODEL, timeout=120)
+    solver = PromptSolver(model=_MODEL, timeout=120, temperature=0)
     assert_eval(case, solver, scorers=[ResultSetEquivalence()])
 
 
@@ -45,5 +49,5 @@ def test_select_order_ids(case: EvalCase) -> None:
 )
 def test_select_us_customer_names(case: EvalCase) -> None:
     """Local model selects US customer names; scored on exact rows."""
-    solver = PromptSolver(model=_MODEL, timeout=120)
+    solver = PromptSolver(model=_MODEL, timeout=120, temperature=0)
     assert_eval(case, solver, scorers=[ResultSetEquivalence()])

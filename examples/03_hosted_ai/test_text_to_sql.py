@@ -19,7 +19,7 @@ pytestmark = pytest.mark.skipif(
 
 _DB_PATH = Path(tempfile.mkdtemp(prefix="data_eval_ex03_")) / "shop.duckdb"
 _PLATFORM = duckdb_platform(name="examples-hosted-ai", path=str(_DB_PATH))
-_MODEL = os.getenv("DATA_EVAL_MODEL", "openai/gpt-4o-mini")
+_MODEL = os.getenv("DATA_EVAL_HOSTED_MODEL", "openai/gpt-4o-mini")
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -40,7 +40,7 @@ def _seed_db() -> Iterator[None]:
 )
 def test_order_count(case: EvalCase) -> None:
     """Hosted model counts orders; scored on exact rows."""
-    solver = PromptSolver(model=_MODEL, timeout=120)
+    solver = PromptSolver(model=_MODEL, timeout=120, temperature=0)
     assert_eval(case, solver, scorers=[ResultSetEquivalence()])
 
 
@@ -51,5 +51,5 @@ def test_order_count(case: EvalCase) -> None:
 )
 def test_distinct_customers(case: EvalCase) -> None:
     """Hosted model counts distinct ordering customers; scored on exact rows."""
-    solver = PromptSolver(model=_MODEL, timeout=120)
+    solver = PromptSolver(model=_MODEL, timeout=120, temperature=0)
     assert_eval(case, solver, scorers=[ResultSetEquivalence()])
