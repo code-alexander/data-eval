@@ -1,14 +1,11 @@
-"""Databricks platform example evals: fixed-SQL `CallableSolver` against a live SQL Warehouse.
+"""Databricks example evals: fixed SQL run against a live Databricks SQL Warehouse.
 
-Where examples 01-03 vary the *solver* against a local DuckDB, this varies the *platform*:
-the same kinds of cases run against a real Databricks SQL Warehouse. The solver is
-deterministic so the focus is the platform — precise type resolution, warehouse pushdown,
-and secretless unified auth.
+Precise column types are resolved from the warehouse, expectation and equivalence checks are
+pushed down into SQL, and credentials come from the ambient Databricks SDK environment, not
+the platform reference.
 
-Connection details come from `DATABRICKS_SERVER_HOSTNAME` / `DATABRICKS_HTTP_PATH`;
-credentials resolve from the ambient environment via the Databricks SDK (nothing secret is
-held in the `PlatformRef`). Every case is marked `cloud`: the default `check` runs them; the
-`check-nocloud` fast path skips them, and a connection is opened only when a case runs.
+Point it at a warehouse with `DATABRICKS_SERVER_HOSTNAME` and `DATABRICKS_HTTP_PATH`; the
+Databricks SDK supplies the credentials (e.g. `DATABRICKS_TOKEN`).
 """
 
 import os
@@ -39,10 +36,8 @@ _PLATFORM = databricks_platform(
 
 @pytest.fixture(scope="module", autouse=True)
 def _seed_warehouse() -> Iterator[None]:
-    # A session-scoped TEMPORARY VIEW: visible only on this connection, gone when it closes —
-    # no catalog to choose, no table to clean up, only query permissions needed. Seeded on the
-    # same cached adapter the cases resolve, so the view (and the DESCRIBE QUERY type probe)
-    # see it. Explicit CASTs pin the column types the typed case asserts.
+    # A session-scoped temp view: nothing lands in the catalog and there's nothing to clean
+    # up, so this needs only query permissions. The CASTs fix the types the typed case asserts.
     adapter = resolve(_PLATFORM)
     result = adapter.execute(
         f"CREATE OR REPLACE TEMPORARY VIEW {_VIEW} AS "
@@ -56,9 +51,8 @@ def _seed_warehouse() -> Iterator[None]:
     yield
 
 
-# Typed result set with precise types. The `DECIMAL(10, 2)` assertion passes only because
-# dataeval recovers the scale via `DESCRIBE QUERY`: the connector's raw column description
-# reports a bare `DECIMAL` (i.e. `DECIMAL(10, 0)`), which would fail this assertion.
+# Precise column types. The `DECIMAL(10, 2)` assertion holds only because dataeval resolves
+# the column types from the warehouse — the driver's own description reports a scaleless `DECIMAL`.
 @eval_case(
     input="List each order's customer and amount, ordered by id.",
     expected={
@@ -80,8 +74,7 @@ def test_precise_types_resolved(case: EvalCase) -> None:
     assert_eval(case, solver, scorers=[ResultSetEquivalence()])
 
 
-# Untyped result set: values only. No column-type assertion, so it sidesteps Spark's
-# decimal-sum type promotion and checks the computed value in the warehouse.
+# Untyped result set: values only, no column-type assertion.
 @eval_case(
     input="What is the total order amount?",
     expected={"rows": [{"total": Decimal("35.50")}]},
@@ -95,7 +88,7 @@ def test_untyped_total(case: EvalCase) -> None:
 
 # Gold query: the reference query's executed RESULT is the expected answer (execution
 # accuracy). The solver phrases its SQL differently but yields the same rows, so it passes —
-# both run in the warehouse and the comparison is on results, not SQL text.
+# the comparison is on results, not SQL text.
 @eval_case(
     input="What is the total order amount per customer?",
     expected={

@@ -16,10 +16,9 @@ env:
   UV_FROZEN: "1"
 
 jobs:
-  # Full gate: the entire suite (unit + e2e + cloud) at the latest Python, with the 100%
-  # coverage gate and the build. Needs cloud secrets, so it's skipped on fork PRs (which can't
-  # read them); `check` treats that skip as OK. Coverage is version-independent, so it's
-  # measured here once rather than across the matrix.
+  # Full gate: the whole suite (unit + e2e + cloud) at the latest Python, with the coverage
+  # gate and build. Cloud secrets aren't available to fork PRs, so it's skipped there and
+  # `check` treats that as OK.
   gate:
     name: gate (py3.13)
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
@@ -69,8 +68,8 @@ jobs:
           DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
 
-  # Version compatibility: the non-cloud suite on the other supported Pythons (3.13 is covered
-  # by `gate`). No coverage gate, no secrets — so it also runs on fork PRs.
+  # Compatibility: the non-cloud suite on the other supported Pythons (3.13 is the gate's). No
+  # secrets, so it runs on fork PRs too.
   compat:
     name: compat (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
@@ -120,8 +119,8 @@ jobs:
         env:
           DATAEVAL_LOCAL_MODEL: ollama_chat/qwen2.5-coder:1.5b
 
-  # Single required status check. Require only this in branch protection: a fork-skipped
-  # `gate` counts as OK (forks can't reach cloud), a real failure does not.
+  # Single required status check for branch protection: a fork-skipped `gate` is OK, a real
+  # failure is not.
   check:
     if: always()
     needs: [gate, compat]
