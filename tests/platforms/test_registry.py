@@ -1,6 +1,7 @@
 """Unit tests for platform-ref builders and `PlatformRef` -> adapter resolution."""
 
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -80,6 +81,21 @@ class TestResolve:
         monkeypatch.setitem(sys.modules, "dataeval.platforms.databricks", None)
         with pytest.raises(RuntimeError, match="requires the 'databricks' extra"):
             resolve(databricks_platform(name="dbx-missing-extra", server_hostname="h", http_path="/p"))
+
+    def test_resolves_databricks_through_registry(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Mock the connector so the registry's databricks dispatch builds an adapter without a
+        # live workspace.
+        from dataeval.platforms.databricks import DatabricksAdapter
+
+        monkeypatch.setattr("databricks.sql.connect", lambda **kwargs: types.SimpleNamespace(close=lambda: None))
+        monkeypatch.setattr("dataeval.platforms.databricks.Config", lambda host: object())
+        adapter = resolve(
+            databricks_platform(name="dbx-build", server_hostname="h", http_path="/p", catalog="main", schema="sales")
+        )
+        try:
+            assert isinstance(adapter, DatabricksAdapter)
+        finally:
+            close_all()
 
 
 @pytest.mark.e2e

@@ -134,6 +134,11 @@ class TestTypeProbe:
     def test_types_from_probe_empty_is_error(self) -> None:
         assert DatabricksAdapter.types_from_probe([]) == "DESCRIBE QUERY returned no rows"
 
+    def test_types_from_probe_missing_data_type_is_error(self) -> None:
+        result = DatabricksAdapter.types_from_probe([{"col_name": "amount", "comment": ""}])
+        assert isinstance(result, str)
+        assert result.startswith("DESCRIBE QUERY row missing data_type:")
+
 
 @pytest.mark.unit
 class TestLifecycle:
