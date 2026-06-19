@@ -6,8 +6,9 @@
 
 **The evaluation framework for AI-generated SQL.**
 
-`pytest`-native evals that execute the SQL your AI writes against real warehouses, so you
-catch when a prompt or model change starts producing incorrect answers.
+Run AI-generated SQL in your warehouse and catch answer regressions when prompts, models, or code change.
+
+Pytest-native. CI-friendly. Built for data teams.
 
 > Status: pre-alpha. The API will change.
 
