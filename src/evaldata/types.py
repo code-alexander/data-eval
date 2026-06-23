@@ -456,9 +456,13 @@ class ExecutionError(Error):
 
 
 class NormalizationError(Error):
-    """A typed failure from parsing or normalizing SQL for comparison, returned as a value."""
+    """A typed failure from parsing or normalizing SQL for comparison, returned as a value.
 
-    kind: Literal["parse_failed", "not_single_statement", "normalize_failed"]
+    `non_deterministic` marks a query whose result is not a function of its inputs (e.g.
+    `rand()`, `current_timestamp`).
+    """
+
+    kind: Literal["parse_failed", "not_single_statement", "normalize_failed", "non_deterministic"]
 
 
 class ExecutionResult(BaseModel):

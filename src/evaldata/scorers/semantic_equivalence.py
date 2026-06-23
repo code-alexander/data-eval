@@ -6,6 +6,7 @@ the warehouse entirely. `AstEquivalence` normalizes both queries' syntax trees w
 and compares them: it only ever confirms, never refutes; portable and execution-free.
 """
 
+import functools
 from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
@@ -14,7 +15,7 @@ from sqlglot import exp
 from sqlglot.errors import SqlglotError
 from sqlglot.optimizer.normalize import normalize
 from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
-from sqlglot.optimizer.simplify import simplify
+from sqlglot.optimizer.simplify import gen, simplify
 
 from evaldata.equivalence.semantic import combine
 from evaldata.scorers.context import ScoreContext
@@ -67,8 +68,9 @@ class AstEquivalence:
 
     Matching normalized trees yield `"equivalent"`; anything else (trees differ, a parse
     failure, or input that is not exactly one statement) yields `"unknown"`, never
-    `"not_equivalent"`. The normalization is conservative and schema-free, so some true
-    equivalences (e.g. commutative arithmetic over columns) fall through as `"unknown"`.
+    `"not_equivalent"`. The normalization is schema-free: it fully reassociates commutative
+    arithmetic (`+`/`*`), boolean/bitwise chains, and `IN`-list order; other unhandled
+    equivalences fall through as `"unknown"`.
     """
 
     name: SemanticEquivalenceMethod = "ast"
@@ -116,11 +118,71 @@ def _unknown(detail: str) -> SemanticVerdict:
     return SemanticVerdict(method="ast", equivalence="unknown", detail=detail)
 
 
+# Float `+`/`*` reassociation can differ in the last ULP; accepted, since this governs
+# equivalence, not exact bit-identity.
+_ASSOCIATIVE_COMMUTATIVE = (exp.And, exp.Or, exp.BitwiseAnd, exp.BitwiseOr, exp.BitwiseXor, exp.Add, exp.Mul)
+_NONDETERMINISTIC = (
+    exp.Rand,
+    exp.Uuid,
+    exp.CurrentTimestamp,
+    exp.CurrentDate,
+    exp.CurrentTime,
+    exp.CurrentDatetime,
+    exp.CurrentUser,
+)
+# Non-deterministic builtins sqlglot has no dedicated class for, so they are matched by name.
+_NONDETERMINISTIC_NAMES = frozenset({"monotonically_increasing_id", "spark_partition_id", "input_file_name"})
+
+
+def _is_non_deterministic(tree: exp.Expression) -> bool:
+    """Whether `tree` contains a node whose value is not a function of its inputs.
+
+    Args:
+        tree: The parsed expression to scan.
+
+    Returns:
+        `True` if any node is non-deterministic.
+    """
+    for node in tree.walk():
+        if isinstance(node, _NONDETERMINISTIC):
+            return True
+        if isinstance(node, (exp.Func, exp.Anonymous)):
+            name = (node.name or node.sql_name()).lower()
+            if name in _NONDETERMINISTIC_NAMES:
+                return True
+    return False
+
+
+def _canonicalize(node: exp.Expression) -> exp.Expression:
+    """Rewrite associative-commutative chains and `IN`-lists into a canonical order.
+
+    Args:
+        node: The expression to canonicalize; mutated in place and returned.
+
+    Returns:
+        The canonicalized expression (the same object as `node`, except for reassociated
+        chains, which are rebuilt).
+    """
+    for key, value in list(node.args.items()):
+        if isinstance(value, exp.Expression):
+            node.set(key, _canonicalize(value))
+        elif isinstance(value, list):
+            node.set(key, [_canonicalize(v) if isinstance(v, exp.Expression) else v for v in value])
+    if isinstance(node, _ASSOCIATIVE_COMMUTATIVE):
+        parts = sorted(node.flatten(), key=gen)
+        cls = type(node)
+        return functools.reduce(lambda left, right: cls(this=left, expression=right), parts)
+    if isinstance(node, exp.In) and len(node.expressions) > 1:
+        node.set("expressions", sorted(node.expressions, key=gen))
+    return node
+
+
 def _normalize(sql: Sql, dialect: Dialect) -> exp.Expression | NormalizationError:
     """Parse and normalize `sql` into a comparable expression, or return a `NormalizationError`.
 
-    The normalization is conservative, schema-free, and truth-preserving. Returns a
-    `NormalizationError` (rather than raising) when `sql` does not parse or is not a single statement.
+    Returns a `NormalizationError` (rather than raising) when `sql` does not parse, is not a
+    single statement, contains a non-deterministic call, or hits an unfoldable constant (e.g.
+    division by zero) while simplifying.
 
     Args:
         sql: The query to normalize.
@@ -138,12 +200,34 @@ def _normalize(sql: Sql, dialect: Dialect) -> exp.Expression | NormalizationErro
         return NormalizationError(
             kind="not_single_statement", message=f"expected exactly one statement, got {len(parsed)}"
         )
+    if _is_non_deterministic(parsed[0]):
+        return NormalizationError(
+            kind="non_deterministic", message="query contains a non-deterministic call; cannot compare on syntax"
+        )
     try:
-        expression = normalize_identifiers(parsed[0], dialect=dialect)
-        expression = normalize(expression)
-        return simplify(expression, dialect=dialect)
-    except SqlglotError as error:  # pragma: no cover - defensive: these passes don't raise on parseable input
+        return _normalize_tree(parsed[0], dialect)
+    except (SqlglotError, ArithmeticError) as error:
         return NormalizationError(kind="normalize_failed", message=f"could not normalize ({error})", cause=error)
+
+
+def _normalize_tree(tree: exp.Expression, dialect: Dialect) -> exp.Expression:
+    """Normalize a parsed tree so that queries with equal normalized trees are equivalent.
+
+    The input is not mutated.
+
+    Args:
+        tree: The parsed expression to normalize.
+        dialect: The SQLGlot dialect to normalize in.
+
+    Returns:
+        The normalized expression.
+    """
+    expression = normalize_identifiers(tree.copy(), dialect=dialect)
+    expression = normalize(expression)
+    expression = simplify(expression, dialect=dialect)
+    expression = _canonicalize(expression.copy())
+    expression = simplify(expression, dialect=dialect)
+    return _canonicalize(expression)  # second pass converges to a fixpoint
 
 
 class ExecutionEquivalence:

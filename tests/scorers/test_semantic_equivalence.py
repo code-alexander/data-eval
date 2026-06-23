@@ -103,10 +103,13 @@ class TestAstEquivalence:
         verdict = _ast("SELECT 1 AS n", "SELECT 2 AS n")
         assert verdict.equivalence == "unknown"
 
-    def test_arithmetic_commutativity_is_a_sound_miss(self) -> None:
-        # SQLGlot does not reorder commutative arithmetic over columns; inconclusive, not refuted.
+    def test_binary_arithmetic_commutativity_confirms(self) -> None:
         verdict = _ast("SELECT x + 1 AS n FROM t", "SELECT 1 + x AS n FROM t")
-        assert verdict.equivalence == "unknown"
+        assert verdict.equivalence == "equivalent"
+
+    def test_chained_arithmetic_reassociation_confirms(self) -> None:
+        verdict = _ast("SELECT a + b + c AS n FROM t", "SELECT c + b + a AS n FROM t")
+        assert verdict.equivalence == "equivalent"
 
     def test_multiple_statements_are_unknown(self) -> None:
         verdict = _ast("SELECT 1; SELECT 2", "SELECT 1")
@@ -124,11 +127,109 @@ class TestAstEquivalence:
         verdict = _ast("SELECT FROM WHERE )(", "SELECT 1")
         assert verdict.equivalence == "unknown"
 
+    def test_unfoldable_constant_is_unknown(self) -> None:
+        # Folding `1.0 / 0` raises during simplification, so the check abstains.
+        verdict = _ast("SELECT 1.0 / 0 AS n", "SELECT 1 AS n")
+        assert verdict.equivalence == "unknown"
+
     def test_non_gold_expected_is_unknown(self) -> None:
         case = _other_case(UntypedResultSet(rows=[{"n": 1}]))
         verdict = AstEquivalence().judge(case, _OUTPUT, _RESULT, context=_context("SELECT 1 AS n"))
         assert verdict.equivalence == "unknown"
         assert verdict.detail == "expected is not a gold query"
+
+
+def _ast_dialect(model: str, gold: str, dialect: Dialect) -> SemanticVerdict:
+    context = ScoreContext(queries=QueryRunner(_NullAdapter(), Sql(model), dialect, None))
+    return AstEquivalence().judge(_gold_case(gold), _OUTPUT, _RESULT, context=context)
+
+
+# (model, gold) pairs that must confirm as "equivalent" via the canonicalization pass.
+_CANONICALIZATION_POSITIVES = [
+    ("SELECT x + 1 AS n FROM t", "SELECT 1 + x AS n FROM t"),
+    ("SELECT x * 2 AS n FROM t", "SELECT 2 * x AS n FROM t"),
+    ("SELECT a + b AS n FROM t", "SELECT b + a AS n FROM t"),
+    ("SELECT a * b AS n FROM t", "SELECT b * a AS n FROM t"),
+    ("SELECT a + b + c AS n FROM t", "SELECT c + b + a AS n FROM t"),
+    ("SELECT a * b * c AS n FROM t", "SELECT c * b * a AS n FROM t"),
+    ("SELECT 1 FROM t WHERE a AND b AND c", "SELECT 1 FROM t WHERE c AND b AND a"),
+    ("SELECT 1 FROM t WHERE a OR b OR c", "SELECT 1 FROM t WHERE c OR a OR b"),
+    ("SELECT 1 FROM t WHERE a = 1", "SELECT 1 FROM t WHERE 1 = a"),
+    ("SELECT 1 FROM t WHERE a > 5", "SELECT 1 FROM t WHERE 5 < a"),
+    ("SELECT 1 + 1 AS n", "SELECT 2 AS n"),
+    ("SELECT 1 FROM t WHERE NOT (a AND b)", "SELECT 1 FROM t WHERE NOT a OR NOT b"),
+    ("SELECT 1 FROM t WHERE NOT (a > 5)", "SELECT 1 FROM t WHERE a <= 5"),
+    ("SELECT 1 FROM t WHERE a > 5 AND a > 3", "SELECT 1 FROM t WHERE a > 5"),
+    ("SELECT 1 FROM t WHERE x IN (3, 1, 2)", "SELECT 1 FROM t WHERE x IN (1, 2, 3)"),
+    ("SELECT nvl(a, 0) AS n FROM t", "SELECT coalesce(a, 0) AS n FROM t"),
+]
+
+# (model, gold) pairs that must NOT confirm as "equivalent".
+_CANONICALIZATION_MUST_DIFFER = [
+    ("SELECT 1 FROM a JOIN b ON a.id = b.id", "SELECT 1 FROM b JOIN a ON a.id = b.id"),
+    ("SELECT a FROM t UNION ALL SELECT b FROM t", "SELECT b FROM t UNION ALL SELECT a FROM t"),
+    ("SELECT a, b FROM t", "SELECT b, a FROM t"),
+    ("SELECT 1 FROM t GROUP BY a, b", "SELECT 1 FROM t GROUP BY b, a"),
+    ("SELECT a FROM t ORDER BY a, b", "SELECT a FROM t ORDER BY b, a"),
+    ("SELECT a FROM t ORDER BY a ASC", "SELECT a FROM t ORDER BY a DESC"),
+    ("SELECT DISTINCT a FROM t", "SELECT a FROM t"),
+    ("SELECT a - b AS n FROM t", "SELECT b - a AS n FROM t"),
+    ("SELECT a / b AS n FROM t", "SELECT b / a AS n FROM t"),
+    ("SELECT 1 FROM t WHERE NOT (a = b)", "SELECT 1 FROM t WHERE a = b"),
+    ("SELECT 1 AS n", "SELECT 2 AS n"),
+    ("SELECT 1 FROM t WHERE a <=> b", "SELECT 1 FROM t WHERE a = b"),
+]
+
+# `^` parses as bitwise xor under Databricks but as exponentiation under DuckDB, so these
+# pairs are checked under Databricks.
+_BITWISE_POSITIVES = [
+    ("SELECT a & b & c AS n FROM t", "SELECT c & a & b AS n FROM t"),
+    ("SELECT a | b | c AS n FROM t", "SELECT c | a | b AS n FROM t"),
+    ("SELECT a ^ b ^ c AS n FROM t", "SELECT c ^ a ^ b AS n FROM t"),
+]
+
+
+@pytest.mark.unit
+class TestCanonicalization:
+    @pytest.mark.parametrize(("model", "gold"), _CANONICALIZATION_POSITIVES)
+    def test_canonicalization_confirms(self, model: str, gold: str) -> None:
+        assert _ast(model, gold).equivalence == "equivalent"
+
+    @pytest.mark.parametrize(("model", "gold"), _CANONICALIZATION_MUST_DIFFER)
+    def test_distinct_queries_are_never_confirmed(self, model: str, gold: str) -> None:
+        assert _ast(model, gold).equivalence != "equivalent"
+
+    @pytest.mark.parametrize(("model", "gold"), _BITWISE_POSITIVES)
+    def test_bitwise_reassociation_confirms(self, model: str, gold: str) -> None:
+        assert _ast_dialect(model, gold, "databricks").equivalence == "equivalent"
+
+
+# Non-deterministic calls that must abstain (never confirmed), checked under Databricks since
+# `monotonically_increasing_id`/`spark_partition_id`/`input_file_name` are Spark builtins.
+_NONDETERMINISTIC_QUERIES = [
+    "SELECT rand() AS n FROM t",
+    "SELECT monotonically_increasing_id() AS n FROM t",
+    "SELECT spark_partition_id() AS n FROM t",
+    "SELECT input_file_name() AS n FROM t",
+]
+
+
+@pytest.mark.unit
+class TestNonDeterminism:
+    def test_identical_nondeterministic_queries_are_not_confirmed(self) -> None:
+        verdict = _ast("SELECT rand() AS n FROM t", "SELECT rand() AS n FROM t")
+        assert verdict.equivalence != "equivalent"
+
+    @pytest.mark.parametrize("query", _NONDETERMINISTIC_QUERIES)
+    def test_named_nondeterministic_builtins_abstain(self, query: str) -> None:
+        verdict = _ast_dialect(query, query, "databricks")
+        assert verdict.equivalence == "unknown"
+        assert verdict.detail is not None
+        assert "non-deterministic" in verdict.detail
+
+    def test_deterministic_query_still_confirms(self) -> None:
+        verdict = _ast("SELECT a FROM t", "SELECT a FROM t")
+        assert verdict.equivalence == "equivalent"
 
 
 @pytest.mark.unit
@@ -209,9 +310,9 @@ class TestExecutionEquivalence:
 @pytest.mark.unit
 class TestLadder:
     def test_ast_abstains_then_execution_confirms(self) -> None:
-        # x+1 vs 1+x: AST cannot canonicalize commutative arithmetic, so execution decides.
-        model = "SELECT x + 1 AS n FROM (SELECT 1 AS x)"
-        case = _gold_case("SELECT 1 + x AS n FROM (SELECT 1 AS x)")
+        # `greatest` commutativity is not canonicalized by AST, so execution decides.
+        model = "SELECT greatest(a, b) AS n FROM (SELECT 1 AS a, 2 AS b)"
+        case = _gold_case("SELECT greatest(b, a) AS n FROM (SELECT 1 AS a, 2 AS b)")
         result = ExecutionResult(rows=[{"n": 2}], latency_seconds=0.0)
         output = SolverOutput(output=Sql(model))
         score = SemanticEquivalence().score(case, output, result, context=_duckdb_context(model))
