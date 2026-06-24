@@ -265,8 +265,8 @@ def _normalize_tree(tree: exp.Expression, dialect: Dialect) -> exp.Expression:
         The normalized expression.
     """
     expression = normalize_identifiers(tree.copy(), dialect=dialect)
-    expression = normalize(expression)
     expression = _simplify(expression, dialect)
+    expression = normalize(expression)
     expression = _canonicalize(expression.copy())
     expression = _simplify(expression, dialect)
     return _canonicalize(expression)  # second pass converges to a fixpoint
