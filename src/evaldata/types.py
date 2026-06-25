@@ -26,6 +26,13 @@ SQLDialect = Literal[
     "duckdb",
 ]
 
+# A scorer-level test outcome: a confirmed pass, a refuted fail, or `"inconclusive"` when the
+# test could neither confirm nor refute.
+Verdict = Literal["pass", "fail", "inconclusive"]
+
+# A normalized graded magnitude in `[0.0, 1.0]`, higher-is-better.
+Score = Annotated[float, Field(ge=0.0, le=1.0)]
+
 
 class PlatformRef(BaseModel):
     """Serializable reference to a configured data platform connection."""
@@ -540,16 +547,43 @@ class ExpectationOutcome(BaseModel):
 
 
 class ScoreResult(BaseModel):
-    """The outcome of running a Scorer against an EvalCase: pass/fail plus diagnostics."""
+    """The outcome of running a Scorer against an EvalCase: a verdict plus diagnostics.
+
+    `verdict` is the scorer-level test outcome: `"pass"`, `"fail"`, or `"inconclusive"`
+    (the test could neither confirm nor refute). `score` is an optional normalized graded
+    magnitude in `[0.0, 1.0]`, higher-is-better; it must be absent when the verdict is
+    `"inconclusive"`, since an undecided result carries no graded magnitude.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     scorer: Annotated[str, Field(min_length=1)]
-    passed: bool
+    verdict: Verdict
+    score: Score | None = None
     diff: ResultSetDiff | None = None
     outcomes: list[ExpectationOutcome] = Field(default_factory=list)
     explanation: Annotated[str, Field(min_length=1)] | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @property
+    def passed(self) -> bool:
+        """Whether the verdict is `"pass"`."""
+        return self.verdict == "pass"
+
+    @model_validator(mode="after")
+    def _reject_score_when_inconclusive(self) -> "ScoreResult":
+        """Reject a graded `score` on an inconclusive verdict.
+
+        Returns:
+            The validated `ScoreResult`.
+
+        Raises:
+            ValueError: If `verdict` is `"inconclusive"` and `score` is set.
+        """
+        if self.verdict == "inconclusive" and self.score is not None:
+            msg = "an inconclusive ScoreResult cannot carry a graded score"
+            raise ValueError(msg)
+        return self
 
 
 # A semantic check either confirms equivalence or cannot decide; it never refutes, so "unknown"

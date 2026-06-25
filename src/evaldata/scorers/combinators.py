@@ -35,7 +35,7 @@ class FirstDecisive:
         """Run members in order, returning the first that passes (later members not consulted), else the last.
 
         The returned result carries a `metadata["first_decisive"]` trail of
-        `{"scorer", "passed"}` for each member that actually ran.
+        `{"scorer", "passed", "verdict"}` for each member that actually ran.
 
         Args:
             case: The eval case, forwarded to each member.
@@ -51,7 +51,7 @@ class FirstDecisive:
         decided: ScoreResult | None = None
         for scorer in self._scorers:
             decided = scorer.score(case, output, result, context=context)
-            trail.append({"scorer": decided.scorer, "passed": decided.passed})
+            trail.append({"scorer": decided.scorer, "passed": decided.passed, "verdict": decided.verdict})
             if decided.passed:
                 break
         assert decided is not None

@@ -11,7 +11,8 @@ def query_equivalence() -> FirstDecisive:
     The case's `expected` must be a `GoldQuery`.
 
     Returns:
-        A `FirstDecisive` over `SemanticEquivalence` (compares the queries; confirm-or-abstain)
-        then `ResultSetEquivalence` (compares the results: runs both queries and diffs).
+        A `FirstDecisive` over `SemanticEquivalence` (compares the queries; confirms equivalence
+        or returns unknown) then `ResultSetEquivalence` (compares the results: runs both queries
+        and diffs).
     """
     return FirstDecisive([SemanticEquivalence(), ResultSetEquivalence()])

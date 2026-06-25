@@ -92,7 +92,7 @@ def test_ast_confirms_without_executing(case: EvalCase) -> None:
     expected={"kind": "gold_query", "sql": "SELECT name FROM customers WHERE country = 'US'"},
     platform=_PLATFORM,
 )
-def test_execution_confirms_when_ast_abstains(case: EvalCase) -> None:
+def test_execution_confirms_when_ast_is_inconclusive(case: EvalCase) -> None:
     """A CTE the syntax check can't match; the execution fallback runs both queries and confirms."""
     result = _score(
         case, "WITH us AS (SELECT * FROM customers WHERE country = 'US') SELECT name FROM us", query_equivalence()
@@ -107,7 +107,7 @@ def test_execution_confirms_when_ast_abstains(case: EvalCase) -> None:
     platform=_PLATFORM,
 )
 def test_execution_refutes_wrong_query(case: EvalCase) -> None:
-    """A wrong filter; the syntax check abstains and execution refutes with a diff."""
+    """A wrong filter; the syntax check is inconclusive and execution refutes with a diff."""
     result = _score(case, "SELECT name FROM customers WHERE country = 'GB'", query_equivalence())
     assert not result.passed
     assert _trail(result) == [("semantic_equivalence", False), ("result_set_equivalence", False)]
@@ -121,9 +121,10 @@ def test_execution_refutes_wrong_query(case: EvalCase) -> None:
     expected={"kind": "gold_query", "sql": "SELECT current_timestamp AS t"},
     platform=_PLATFORM,
 )
-def test_ast_abstains_on_nondeterminism(case: EvalCase) -> None:
-    """`current_timestamp` can't be compared on syntax; `SemanticEquivalence` abstains and the result fails."""
+def test_ast_inconclusive_on_nondeterminism(case: EvalCase) -> None:
+    """`current_timestamp` can't be compared on syntax; `SemanticEquivalence` is inconclusive."""
     result = _score(case, "SELECT current_timestamp AS t", SemanticEquivalence([AstEquivalence()]))
     assert not result.passed
+    assert result.verdict == "inconclusive"
     assert result.explanation == "no semantic check could confirm equivalence"
     assert _verdicts(result) == [("ast", "unknown")]

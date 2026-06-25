@@ -43,7 +43,7 @@ class TestRenderFailure:
             sample_missing_rows=[{"count": 99}],
             sample_extra_rows=[{"count": 2}],
         )
-        score = ScoreResult(scorer="result_set_equivalence", passed=False, diff=diff)
+        score = ScoreResult(scorer="result_set_equivalence", verdict="fail", diff=diff)
         msg = render_failure(_case(), out, result, [score])
         assert "rock-count" in msg
         # SQL is surfaced verbatim — not soft-wrapped by the renderer
@@ -63,7 +63,7 @@ class TestRenderFailure:
             column_order_mismatch=True,
             type_mismatches=[TypeMismatch(column="ts", expected="TIMESTAMP", actual="DATE")],
         )
-        score = ScoreResult(scorer="result_set_equivalence", passed=False, diff=diff)
+        score = ScoreResult(scorer="result_set_equivalence", verdict="fail", diff=diff)
         msg = render_failure(_case(), out, result, [score])
         assert "missing columns" in msg and "amount" in msg
         assert "unexpected columns" in msg and "total" in msg
@@ -82,7 +82,7 @@ class TestRenderFailure:
                 ColumnMismatch(column="status", unexpected_count=1),
             ],
         )
-        score = ScoreResult(scorer="result_set_equivalence", passed=False, diff=diff)
+        score = ScoreResult(scorer="result_set_equivalence", verdict="fail", diff=diff)
         msg = render_failure(_case(), out, result, [score])
         assert "column mismatches" in msg
         assert "amount" in msg and "status" in msg
@@ -97,7 +97,7 @@ class TestRenderFailure:
             actual_row_count=1,
             type_mismatches=[TypeMismatch(column="tags", expected="INTEGER[]", actual="VARCHAR[]")],
         )
-        score = ScoreResult(scorer="result_set_equivalence", passed=False, diff=diff)
+        score = ScoreResult(scorer="result_set_equivalence", verdict="fail", diff=diff)
         msg = render_failure(_case(), out, result, [score])
         assert "INTEGER[]" in msg and "VARCHAR[]" in msg
 
@@ -106,7 +106,7 @@ class TestRenderFailure:
         result = ExecutionResult(
             rows=[], latency_seconds=0.0, error=ExecutionError(kind="query_failed", message="table nope does not exist")
         )
-        score = ScoreResult(scorer="result_set_equivalence", passed=False, explanation="query failed")
+        score = ScoreResult(scorer="result_set_equivalence", verdict="fail", explanation="query failed")
         msg = render_failure(_case(), out, result, [score])
         assert "execution error: table nope does not exist" in msg
 
@@ -131,7 +131,7 @@ class TestRenderSummary:
                     id="bad",
                     input="q",
                     passed=False,
-                    scores=[ScoreResult(scorer="result_set_equivalence", passed=False)],
+                    scores=[ScoreResult(scorer="result_set_equivalence", verdict="fail")],
                 ),
             ]
         )

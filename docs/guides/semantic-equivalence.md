@@ -22,7 +22,7 @@ It helps to separate two questions, because they are answered in different ways:
   queries and comparing the rows they return. `ResultSetEquivalence` answers this.
 
 The two have different powers. Reasoning about the queries can confirm equivalence with
-certainty, but when it can't see why two queries match it has to abstain — it never declares
+certainty, but when it can't see why two queries match it returns `unknown` — it never declares
 two queries *unequal*, because the next dataset might be the one that distinguishes them.
 Running the queries is the opposite: it can refute (the rows differ, here is the diff), but a
 match on one dataset is only evidence, not a proof.
@@ -31,8 +31,8 @@ match on one dataset is only evidence, not a proof.
 
 `SemanticEquivalence` reasons about the queries and never runs them. Each of its checks returns
 one of two verdicts: `equivalent` (confirmed) or `unknown` (could not confirm). There is no
-third "not equivalent" verdict — a check that can't see an equivalence abstains rather than
-guess. Because it never refutes, it can never falsely reject a correct query.
+third "not equivalent" verdict — a check that can't see an equivalence returns `unknown` rather
+than guess. Because it never refutes, it can never falsely reject a correct query.
 
 Today it ships one check:
 
@@ -41,7 +41,7 @@ Today it ships one check:
   Differing trees are inconclusive, so it returns `unknown`.
 
 The scorer runs its checks in order and stops at the first that confirms. If none confirm, the
-result fails as undecided with the explanation `"no semantic check could confirm equivalence"`.
+result is inconclusive, with the explanation `"no semantic check could confirm equivalence"`.
 
 The expected outcome must be a [`GoldQuery`][evaldata.types.GoldQuery]: equivalence is a
 query-against-query comparison, so there must be a reference query to compare against.
@@ -60,19 +60,19 @@ trees into a canonical form before comparing. It normalizes:
 
 Equivalences that depend on the query's shape rather than its operators fall through: wrapping a
 query in a CTE or a subquery, or a different join shape, produces a different tree even when the
-results are identical. The syntax check abstains on those.
+results are identical. The syntax check returns `unknown` on those.
 
 ## Non-determinism
 
 A query whose result is not a function of its inputs cannot be compared on syntax: two textually
 identical `SELECT current_timestamp` queries return different values each run. `AstEquivalence`
 detects non-deterministic calls — `rand()`, `current_timestamp`, `uuid()`, and similar — and
-abstains rather than risk a false confirmation.
+returns `unknown` rather than risk a false confirmation.
 
 ## Compose with execution: `query_equivalence`
 
-On its own, `SemanticEquivalence` only confirms or abstains. To *decide* the cases it can't
-confirm, pair it with execution. `query_equivalence()` does exactly that: it confirms by
+On its own, `SemanticEquivalence` either confirms or is inconclusive. To *decide* the cases it
+can't confirm, pair it with execution. `query_equivalence()` does exactly that: it confirms by
 structure when it can, and otherwise runs both queries and diffs the results.
 
 ```python
@@ -83,8 +83,8 @@ scorer = query_equivalence()
 
 `query_equivalence()` is a `FirstDecisive` over two scorers:
 
-1. `SemanticEquivalence` — compares the queries, confirm-or-abstain. A structural confirmation passes
-   immediately and execution is skipped.
+1. `SemanticEquivalence` — compares the queries; it confirms or returns `unknown`. A structural
+   confirmation passes immediately and execution is skipped.
 2. `ResultSetEquivalence` — runs both queries and diffs the result sets under the case's
    `ComparisonConfig`. Equal result sets pass; a difference fails and carries the diff. This is
    the layer that can refute.
@@ -104,7 +104,7 @@ FirstDecisive([SemanticEquivalence(), ResultSetEquivalence()])
 ```
 
 The result of a `FirstDecisive` carries a `metadata["first_decisive"]` trail — one
-`{"scorer", "passed"}` entry per member that ran — so you can see which layer decided.
+`{"scorer", "passed", "verdict"}` entry per member that ran — so you can see which layer decided.
 
 ## Comparison knobs
 
@@ -133,13 +133,13 @@ decided; the case that only compares the queries reads back `metadata["verdicts"
 
 - **Confirmed by syntax, no query run** — the AI reorders the `AND` predicates and changes
   casing; the trees match and only `("semantic_equivalence", True)` is in the trail.
-- **Confirmed by execution** — the AI wraps the query in a CTE; the syntax check abstains and
-  the execution member confirms, so the trail is `semantic_equivalence` (passed `False`) then
-  `result_set_equivalence` (passed `True`).
-- **Refuted by execution** — the AI filters on the wrong country; the syntax check abstains and
-  the execution member refutes with a diff of the differing rows.
-- **Abstained on non-determinism** — `current_timestamp` cannot be compared on syntax; with the
-  `SemanticEquivalence` alone, nothing decides and the result fails.
+- **Confirmed by execution** — the AI wraps the query in a CTE; the syntax check returns `unknown`
+  and the execution member confirms, so the trail is `semantic_equivalence` (inconclusive) then
+  `result_set_equivalence` (pass).
+- **Refuted by execution** — the AI filters on the wrong country; the syntax check returns `unknown`
+  and the execution member refutes with a diff of the differing rows.
+- **Inconclusive on non-determinism** — `current_timestamp` cannot be compared on syntax; with
+  `SemanticEquivalence` alone, nothing decides and the result is inconclusive.
 
 ## Run it
 
@@ -154,8 +154,8 @@ uv run pytest test_semantic_equivalence.py -q
 
 ## Choose the checks
 
-- **Data-free only** — `SemanticEquivalence()` runs the AST check and confirms or abstains;
-  it fails when it cannot confirm. Write `SemanticEquivalence([AstEquivalence()])` to be
+- **Data-free only** — `SemanticEquivalence()` runs the AST check and either confirms or is
+  inconclusive when it cannot confirm. Write `SemanticEquivalence([AstEquivalence()])` to be
   explicit about which checks run.
 - **Syntax then execution** — `query_equivalence()` confirms by structure when it can and runs
   the queries otherwise. This is the usual choice for grading AI SQL against a gold query.
