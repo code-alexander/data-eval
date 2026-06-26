@@ -1,7 +1,7 @@
 """Semantic-equivalence example evals: AI SQL that differs syntactically but is semantically equivalent.
 
 `SemanticEquivalence` compares the queries and confirms a match without running them;
-`query_equivalence()` adds a fallback that runs both queries and compares their results.
+`observed_equivalence()` adds a fallback that runs both queries and compares their results.
 """
 
 import tempfile
@@ -11,7 +11,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from evaldata import CallableSolver, EvalCase, SemanticEquivalence, eval_case, query_equivalence
+from evaldata import CallableSolver, EvalCase, SemanticEquivalence, eval_case, observed_equivalence
 from evaldata.platforms import duckdb_platform, resolve
 from evaldata.scorers import AstEquivalence, QueryRunner, ScoreContext, Scorer
 from evaldata.types import ScoreResult
@@ -35,7 +35,7 @@ def _score(case: EvalCase, model_sql: str, scorer: Scorer) -> ScoreResult:
     Args:
         case: The eval case, carrying the gold query and platform.
         model_sql: The model's SQL to judge against the gold query.
-        scorer: The scorer to run: `SemanticEquivalence` (compares the queries) or composite `query_equivalence`.
+        scorer: The scorer to run: `SemanticEquivalence` (compares the queries) or composite `observed_equivalence`.
 
     Returns:
         The `ScoreResult`.
@@ -51,10 +51,10 @@ def _score(case: EvalCase, model_sql: str, scorer: Scorer) -> ScoreResult:
 
 
 def _trail(result: ScoreResult) -> list[tuple[str, bool]]:
-    """The `(scorer, passed)` of each member that ran under `query_equivalence`, in order.
+    """The `(scorer, passed)` of each member that ran under `observed_equivalence`, in order.
 
     Args:
-        result: A `query_equivalence` score result.
+        result: An `observed_equivalence` score result.
 
     Returns:
         One `(scorer, passed)` pair per member that ran.
@@ -81,7 +81,7 @@ def _verdicts(result: ScoreResult) -> list[tuple[str, str]]:
 )
 def test_ast_confirms_without_executing(case: EvalCase) -> None:
     """Reordered predicates and casing match after normalization; confirmed without running either query."""
-    result = _score(case, "select NAME from customers where id > 1 and country = 'US'", query_equivalence())
+    result = _score(case, "select NAME from customers where id > 1 and country = 'US'", observed_equivalence())
     assert result.passed
     # A structural confirmation skips execution, so only the first member ran.
     assert _trail(result) == [("semantic_equivalence", True)]
@@ -95,7 +95,7 @@ def test_ast_confirms_without_executing(case: EvalCase) -> None:
 def test_execution_confirms_when_ast_is_inconclusive(case: EvalCase) -> None:
     """A CTE the syntax check can't match; the execution fallback runs both queries and confirms."""
     result = _score(
-        case, "WITH us AS (SELECT * FROM customers WHERE country = 'US') SELECT name FROM us", query_equivalence()
+        case, "WITH us AS (SELECT * FROM customers WHERE country = 'US') SELECT name FROM us", observed_equivalence()
     )
     assert result.passed
     assert _trail(result) == [("semantic_equivalence", False), ("result_set_equivalence", True)]
@@ -108,7 +108,7 @@ def test_execution_confirms_when_ast_is_inconclusive(case: EvalCase) -> None:
 )
 def test_execution_refutes_wrong_query(case: EvalCase) -> None:
     """A wrong filter; the syntax check is inconclusive and execution refutes with a diff."""
-    result = _score(case, "SELECT name FROM customers WHERE country = 'GB'", query_equivalence())
+    result = _score(case, "SELECT name FROM customers WHERE country = 'GB'", observed_equivalence())
     assert not result.passed
     assert _trail(result) == [("semantic_equivalence", False), ("result_set_equivalence", False)]
     assert result.diff is not None

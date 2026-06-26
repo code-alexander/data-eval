@@ -32,7 +32,7 @@ types), a `GoldQuery` (the reference query's *result* is compared, not its SQL t
 `ExpectationSuite` (`row_count` / `not_null` / `unique`). `test_semantic_equivalence.py` shows
 `SemanticEquivalence` confirming AI SQL that differs syntactically from the gold query but means
 the same thing — by comparing normalized syntax trees, without running anything — and
-`query_equivalence()` adding an execution fallback that runs the queries when the trees can't
+`observed_equivalence()` adding an execution fallback that runs the queries when the trees can't
 confirm.
 
 ### 02_local_ai

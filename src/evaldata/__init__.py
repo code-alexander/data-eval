@@ -14,7 +14,9 @@ from evaldata.scorers import (
     ResultSetEquivalence,
     RubricBand,
     SemanticEquivalence,
-    query_equivalence,
+    judged_equivalence,
+    observed_equivalence,
+    sql_equivalence_judge,
 )
 from evaldata.solvers import CallableSolver, PromptSolver
 from evaldata.types import EvalCase, PlatformRef
@@ -39,7 +41,9 @@ __all__ = [
     "SemanticEquivalence",
     "assert_eval",
     "eval_case",
-    "query_equivalence",
+    "judged_equivalence",
+    "observed_equivalence",
+    "sql_equivalence_judge",
 ]
 
 

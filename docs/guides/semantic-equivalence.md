@@ -17,7 +17,7 @@ For example, in each row below the AI's SQL has the same meaning as the gold que
 It helps to separate two questions, because they are answered in different ways:
 
 - **Semantic equivalence** — *proven* to match on every possible dataset, by reasoning about
-  the queries themselves. No data is touched. `SemanticEquivalence` answers this.
+  the queries themselves without running them. `SemanticEquivalence` answers this.
 - **Execution (result) equivalence** — *observed* to match on this one dataset, by running both
   queries and comparing the rows they return. `ResultSetEquivalence` answers this.
 
@@ -69,19 +69,19 @@ identical `SELECT current_timestamp` queries return different values each run. `
 detects non-deterministic calls — `rand()`, `current_timestamp`, `uuid()`, and similar — and
 returns `unknown` rather than risk a false confirmation.
 
-## Compose with execution: `query_equivalence`
+## Compose with execution: `observed_equivalence`
 
 On its own, `SemanticEquivalence` either confirms or is inconclusive. To *decide* the cases it
-can't confirm, pair it with execution. `query_equivalence()` does exactly that: it confirms by
+can't confirm, pair it with execution. `observed_equivalence()` does exactly that: it confirms by
 structure when it can, and otherwise runs both queries and diffs the results.
 
 ```python
-from evaldata import query_equivalence
+from evaldata import observed_equivalence
 
-scorer = query_equivalence()
+scorer = observed_equivalence()
 ```
 
-`query_equivalence()` is a `FirstDecisive` over two scorers:
+`observed_equivalence()` is a `FirstDecisive` over two scorers:
 
 1. `SemanticEquivalence` — compares the queries; it confirms or returns `unknown`. A structural
    confirmation passes immediately and execution is skipped.
@@ -93,14 +93,24 @@ scorer = query_equivalence()
 returns the first that passes, else the last (so the last member's diagnostics, such as a diff,
 surface). Note that [`assert_eval`](../reference/eval.md) **ANDs** the scorers you pass it — a
 case passes only when *every* scorer passes. A "first that passes wins" fallback is the opposite
-shape, so it needs a combinator: pass `query_equivalence()` (a single scorer) rather than the
+shape, so it needs a combinator: pass `observed_equivalence()` (a single scorer) rather than the
 two scorers separately.
 
 ```python
 from evaldata import FirstDecisive, ResultSetEquivalence, SemanticEquivalence
 
-# query_equivalence() is shorthand for:
+# observed_equivalence() is shorthand for:
 FirstDecisive([SemanticEquivalence(), ResultSetEquivalence()])
+```
+
+When you can't run the queries — no warehouse, or a result that depends on live data — its
+sibling `judged_equivalence(model)` keeps the structural confirmation but replaces the execution
+member with an LLM judge that grades whether the two queries are equivalent:
+
+```python
+from evaldata import judged_equivalence
+
+scorer = judged_equivalence("openai/gpt-4o-mini")
 ```
 
 The result of a `FirstDecisive` carries a `metadata["first_decisive"]` trail — one
@@ -154,17 +164,20 @@ uv run pytest test_semantic_equivalence.py -q
 
 ## Choose the checks
 
-- **Data-free only** — `SemanticEquivalence()` runs the AST check and either confirms or is
+- **Execution-free only** — `SemanticEquivalence()` runs the AST check and either confirms or is
   inconclusive when it cannot confirm. Write `SemanticEquivalence([AstEquivalence()])` to be
   explicit about which checks run.
-- **Syntax then execution** — `query_equivalence()` confirms by structure when it can and runs
+- **Syntax then execution** — `observed_equivalence()` confirms by structure when it can and runs
   the queries otherwise. This is the usual choice for grading AI SQL against a gold query.
+- **Syntax then LLM judge** — `judged_equivalence(model)` confirms by structure when it can and
+  otherwise asks an LLM judge, running no query. Use it when execution isn't available.
 
 ```python
-from evaldata import SemanticEquivalence, query_equivalence
+from evaldata import SemanticEquivalence, judged_equivalence, observed_equivalence
 from evaldata.scorers import AstEquivalence
 
-query_equivalence()                       # AST-then-execution
+observed_equivalence()                     # AST-then-execution
+judged_equivalence("openai/gpt-4o-mini")   # AST-then-LLM-judge
 SemanticEquivalence()                      # AST-only (compares the queries)
 SemanticEquivalence([AstEquivalence()])    # AST-only, stated explicitly
 ```
