@@ -1,10 +1,12 @@
 """The `evaldata` command-line interface."""
 
 import enum
+import json
 import subprocess
 import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import Any
 
 import typer
 from rich.console import Console
@@ -12,7 +14,9 @@ from rich.table import Table
 from rich.text import Text
 
 from evaldata.core import run_benchmark
+from evaldata.core.runner import BenchmarkSummary
 from evaldata.loaders import load_bird, load_spider
+from evaldata.loaders.benchmarks import SOURCES, cached_dataset_path, fetch_benchmark
 from evaldata.platforms.registry import (
     close_all,
     databricks_platform,
@@ -21,7 +25,7 @@ from evaldata.platforms.registry import (
     resolve,
     sqlite_platform,
 )
-from evaldata.scorers import ExecutionAccuracy
+from evaldata.scorers import ExecutionAccuracy, Scorer
 from evaldata.solvers import SCHEMA_PROMPT_TEMPLATE, PromptSolver
 from evaldata.types import EvalCase, PlatformRef
 
@@ -71,34 +75,165 @@ _LOADERS: dict[_Dataset, Callable[..., Iterator[EvalCase]]] = {
     _Dataset.bird: load_bird,
 }
 
+_SCORERS: dict[_Dataset, Callable[[], Scorer]] = {
+    _Dataset.spider: lambda: ExecutionAccuracy(column_alignment="by_value"),
+    _Dataset.bird: lambda: ExecutionAccuracy(row_order="ignore", multiplicity="set"),
+}
+
+
+def _bench_stats(
+    summary: BenchmarkSummary,
+    difficulty_by_id: dict[str, str | None],
+    *,
+    dataset: _Dataset,
+    model: str,
+    split: str,
+) -> dict[str, Any]:
+    """Build the JSON stats payload for a benchmark run.
+
+    Args:
+        summary: The benchmark summary to serialize.
+        difficulty_by_id: Maps each case id to its difficulty label, or `None` when the case
+            carries none.
+        dataset: The benchmark that was run.
+        model: The litellm model id of the solver under test.
+        split: The dataset split that was loaded.
+
+    Returns:
+        A JSON-serializable mapping with the run's identity, aggregate counts, a `by_difficulty`
+        breakdown (empty when no case carries a difficulty), and every `CaseReport`.
+    """
+    by_difficulty: dict[str, dict[str, float | int]] = {}
+    for report in summary.cases:
+        difficulty = difficulty_by_id.get(report.id)
+        if difficulty is None:
+            continue
+        bucket = by_difficulty.setdefault(difficulty, {"total": 0, "passed": 0, "accuracy": 0.0})
+        bucket["total"] = int(bucket["total"]) + 1
+        bucket["passed"] = int(bucket["passed"]) + (1 if report.passed else 0)
+    for bucket in by_difficulty.values():
+        total = int(bucket["total"])
+        bucket["accuracy"] = int(bucket["passed"]) / total if total else 0.0
+    return {
+        "dataset": dataset.value,
+        "model": model,
+        "split": split,
+        "total": summary.total,
+        "passed": summary.passed,
+        "accuracy": summary.accuracy,
+        "by_difficulty": by_difficulty,
+        "cases": [r.model_dump(mode="json") for r in summary.cases],
+    }
+
 
 @app.command()
 def bench(
     dataset: _Dataset = typer.Argument(..., help="The benchmark to run."),
-    path: Path = typer.Argument(..., help="Path to the unzipped dataset directory."),
+    path: Path | None = typer.Argument(
+        None, help="Path to the unzipped dataset directory; omit to use the downloaded cache."
+    ),
     model: str = typer.Option(..., "--model", help="litellm model id for the solver under test."),
     split: str = typer.Option("dev", "--split", help="Dataset split to load."),
     limit: int | None = typer.Option(None, "--limit", help="Run at most this many cases."),
+    json_path: Path | None = typer.Option(
+        None,
+        "--json",
+        metavar="PATH",
+        help="Also write a JSON stats artifact (identity, counts, by-difficulty, cases) to PATH.",
+    ),
 ) -> None:
     """Run a text-to-SQL benchmark and print its execution accuracy (EX).
 
     Loads the dataset's cases, runs a single-prompt LLM solver (with the schema injected into
-    the prompt) against each, scores with `ExecutionAccuracy`, and prints the aggregate EX.
+    the prompt) against each, scores with the benchmark's `ExecutionAccuracy` configuration
+    (Spider matches columns by value; BIRD uses order-insensitive set semantics), and prints the
+    aggregate EX. When the cases carry a `difficulty`, also prints a per-difficulty breakdown.
 
     Args:
         dataset: The benchmark to run (`spider` or `bird`).
-        path: Path to the unzipped dataset directory.
+        path: Path to the unzipped dataset directory; omit to use the downloaded cache.
         model: A litellm model id for the solver under test.
         split: The dataset split to load (e.g. `dev`).
         limit: Run at most this many cases, or all of them when omitted.
+        json_path: If given, also write a JSON stats artifact to this path.
+
+    Raises:
+        BadParameter: If `path` is omitted and the dataset has not been downloaded.
     """
-    cases = _LOADERS[dataset](path, split=split)
+    if path is None:
+        path = cached_dataset_path(dataset.value)
+        if path is None:
+            msg = f"dataset not downloaded; run: evaldata fetch {dataset.value}"
+            raise typer.BadParameter(msg)
+    cases = list(_LOADERS[dataset](path, split=split))
+    difficulty_by_id = {c.id: c.metadata.get("difficulty") for c in cases}
     solver = PromptSolver(model, prompt_template=SCHEMA_PROMPT_TEMPLATE, temperature=0)
     try:
-        summary = run_benchmark(cases, solver, scorers=[ExecutionAccuracy()], limit=limit)
+        summary = run_benchmark(cases, solver, scorers=[_SCORERS[dataset]()], limit=limit)
     finally:
         close_all()  # this CLI invocation owns the per-db adapters it resolved
-    Console().print(f"EX ({dataset.value}): {summary.accuracy:.1%} ({summary.passed}/{summary.total})")
+
+    console = Console()
+    console.print(f"EX ({dataset.value}): {summary.accuracy:.1%} ({summary.passed}/{summary.total})")
+
+    counts: dict[str, list[int]] = {}
+    for report in summary.cases:
+        difficulty = difficulty_by_id.get(report.id)
+        if difficulty is None:
+            continue
+        bucket = counts.setdefault(difficulty, [0, 0])
+        bucket[0] += 1 if report.passed else 0
+        bucket[1] += 1
+    if counts:
+        table = Table(title=f"EX by difficulty ({dataset.value})", title_justify="left")
+        table.add_column("difficulty")
+        table.add_column("EX")
+        table.add_column("passed/total")
+        for difficulty in sorted(counts):
+            passed, total = counts[difficulty]
+            table.add_row(difficulty, f"{passed / total:.1%}", f"{passed}/{total}")
+        console.print(table)
+
+    if json_path is not None:
+        stats = _bench_stats(summary, difficulty_by_id, dataset=dataset, model=model, split=split)
+        json_path.write_text(json.dumps(stats, indent=2), encoding="utf-8")
+
+
+@app.command()
+def fetch(
+    dataset: str = typer.Argument(..., help="The benchmark dataset to download."),
+    force: bool = typer.Option(False, "--force", help="Re-download even if a valid cached copy exists."),
+    trust: bool = typer.Option(
+        False, "--trust", help="Accept an unpinned source's bytes (required the first time it is fetched)."
+    ),
+    cache_dir: Path | None = typer.Option(
+        None, "--cache-dir", metavar="PATH", help="Cache directory to download into (else the default cache root)."
+    ),
+) -> None:
+    """Download, verify, and cache a benchmark dataset for `bench` to read.
+
+    Args:
+        dataset: The benchmark dataset to download.
+        force: Re-download even if a valid cached copy exists.
+        trust: Accept an unpinned source's bytes (required the first time it is fetched).
+        cache_dir: A cache directory to download into, else the default cache root.
+
+    Raises:
+        BadParameter: If `dataset` is not a known benchmark source.
+        Exit: With code 1 if verification or validation fails.
+    """
+    if dataset not in SOURCES:
+        available = ", ".join(sorted(SOURCES))
+        msg = f"unknown dataset {dataset!r}; available: {available}"
+        raise typer.BadParameter(msg)
+
+    console = Console()
+    try:
+        root = fetch_benchmark(dataset, force=force, trust=trust, cache_dir=cache_dir)
+    except RuntimeError as e:
+        console.print(Text(str(e), style="red"))
+        raise typer.Exit(1) from e
+    console.print(f"cached at: {root}")
 
 
 def _build_refs(
@@ -111,9 +246,8 @@ def _build_refs(
 ) -> list[PlatformRef]:
     """Build a `PlatformRef` for each platform flag that was provided.
 
-    Each branch routes through the typed registry builder, so a flag can only ever name a
-    real `PlatformKind`. The Databricks ref is built only when both its server hostname and
-    HTTP path are given (it has no single-value form).
+    The Databricks ref requires both `databricks_server_hostname` and `databricks_http_path`;
+    either alone produces no entry.
 
     Args:
         duckdb: A DuckDB database path, or `None` if the flag was not given.

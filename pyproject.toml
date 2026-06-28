@@ -55,6 +55,9 @@ databricks = [
 litellm = [
     "litellm>=1.85.1",
 ]
+benchmarks = [
+    "platformdirs>=4.0",
+]
 tracing = [
     "openinference-instrumentation>=0.1.52",
     "opentelemetry-exporter-otlp>=1.42.1",
@@ -64,7 +67,7 @@ all-platforms = [
     "evaldata[postgres,snowflake,bigquery,databricks]",
 ]
 all = [
-    "evaldata[all-platforms,litellm,tracing]",
+    "evaldata[all-platforms,litellm,tracing,benchmarks]",
 ]
 
 [project.urls]
@@ -141,6 +144,8 @@ known-first-party = ["evaldata"]
 quote-style = "double"
 indent-style = "space"
 docstring-code-format = true
+# Vendored third-party oracle kept byte-faithful to its upstream source.
+exclude = ["tests/_vendor/spider_exec_eval.py"]
 
 # ---------------------------------------------------------------------------
 # Pytest

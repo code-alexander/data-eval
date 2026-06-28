@@ -108,6 +108,162 @@ class TestBench:
         assert result.exit_code == 0
         assert "EX (spider): 50.0% (1/2)" in result.output
 
+    def _make_bird(self, root: Path) -> None:
+        db_dir = root / "dev_databases" / "clibench"
+        db_dir.mkdir(parents=True)
+        con = sqlite3.connect(db_dir / "clibench.sqlite")
+        con.execute("CREATE TABLE items (id INTEGER, name TEXT)")
+        # Two rows share a name, so set semantics dedups them to one.
+        con.executemany("INSERT INTO items VALUES (?, ?)", [(1, "a"), (2, "a"), (3, "b")])
+        con.commit()
+        con.close()
+        (root / "dev.json").write_text(
+            json.dumps(
+                [
+                    {
+                        "db_id": "clibench",
+                        "question": "distinct names?",
+                        "evidence": "",
+                        "SQL": "SELECT name FROM items",
+                        "question_id": 0,
+                        "difficulty": "simple",
+                    },
+                    {
+                        "db_id": "clibench",
+                        "question": "how many items?",
+                        "evidence": "",
+                        "SQL": "SELECT count(*) FROM items",
+                        "question_id": 1,
+                        "difficulty": "moderate",
+                    },
+                ]
+            )
+        )
+
+    def test_bird_breakdown_and_json_artifact(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import litellm
+
+        self._make_bird(tmp_path)
+        # The model answers with a deduping DISTINCT query. Under BIRD set semantics it matches
+        # the first gold (which returns duplicate names), and misses the count, so EX is 1/2.
+        real_completion = litellm.completion
+        monkeypatch.setattr(
+            "litellm.completion",
+            lambda **kwargs: real_completion(**kwargs, mock_response="SELECT DISTINCT name FROM items"),
+        )
+        artifact = tmp_path / "stats.json"
+
+        result = runner.invoke(
+            app,
+            ["bench", "bird", str(tmp_path), "--model", "openai/gpt-4o-mini", "--json", str(artifact)],
+        )
+
+        assert result.exit_code == 0
+        assert "EX (bird): 50.0% (1/2)" in result.output
+        assert "simple" in result.output
+        assert "moderate" in result.output
+
+        assert artifact.exists()
+        stats = json.loads(artifact.read_text())
+        assert stats["dataset"] == "bird"
+        assert stats["model"] == "openai/gpt-4o-mini"
+        assert stats["total"] == 2
+        assert stats["passed"] == 1
+        assert stats["by_difficulty"] == {
+            "simple": {"total": 1, "passed": 1, "accuracy": 1.0},
+            "moderate": {"total": 1, "passed": 0, "accuracy": 0.0},
+        }
+        assert len(stats["cases"]) == 2
+
+    def test_no_path_and_no_cache_guides_to_fetch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(cli, "cached_dataset_path", lambda name: None)
+        result = runner.invoke(app, ["bench", "bird", "--model", "openai/gpt-4o-mini"])
+        assert result.exit_code != 0
+        assert "run: evaldata fetch bird" in result.output
+
+    def test_no_path_resolves_from_cache(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import litellm
+
+        self._make_bird(tmp_path)
+        monkeypatch.setattr(cli, "cached_dataset_path", lambda name: tmp_path)
+        real_completion = litellm.completion
+        monkeypatch.setattr(
+            "litellm.completion",
+            lambda **kwargs: real_completion(**kwargs, mock_response="SELECT DISTINCT name FROM items"),
+        )
+        result = runner.invoke(app, ["bench", "bird", "--model", "openai/gpt-4o-mini"])
+        assert result.exit_code == 0
+        assert "EX (bird): 50.0% (1/2)" in result.output
+
+
+@pytest.mark.unit
+class TestBenchStats:
+    """Unit tests for `_bench_stats`: covers the difficulty=None skip (line 110)."""
+
+    def _make_report(self, id_: str, passed: bool) -> "object":
+        from evaldata.reporting.collector import CaseReport
+
+        return CaseReport(id=id_, input="q", passed=passed)
+
+    def test_skips_cases_without_difficulty(self) -> None:
+        from evaldata.cli import _bench_stats
+        from evaldata.core.runner import BenchmarkSummary
+
+        report = self._make_report("q1", True)
+        summary = BenchmarkSummary(total=1, passed=1, accuracy=1.0, cases=[report])
+        stats = _bench_stats(
+            summary,
+            {"q1": None},
+            dataset=cli._Dataset.spider,
+            model="m",
+            split="dev",
+        )
+        assert stats["by_difficulty"] == {}
+
+    def test_aggregates_difficulty_buckets(self) -> None:
+        from evaldata.cli import _bench_stats
+        from evaldata.core.runner import BenchmarkSummary
+
+        reports = [self._make_report("q1", True), self._make_report("q2", False)]
+        summary = BenchmarkSummary(total=2, passed=1, accuracy=0.5, cases=reports)
+        stats = _bench_stats(
+            summary,
+            {"q1": "simple", "q2": "simple"},
+            dataset=cli._Dataset.spider,
+            model="m",
+            split="dev",
+        )
+        assert stats["by_difficulty"]["simple"]["total"] == 2
+        assert stats["by_difficulty"]["simple"]["passed"] == 1
+        assert stats["by_difficulty"]["simple"]["accuracy"] == 0.5
+
+
+@pytest.mark.unit
+class TestFetchCommand:
+    def test_unknown_dataset_bad_parameter(self) -> None:
+        result = runner.invoke(app, ["fetch", "notadataset"])
+        assert result.exit_code == 2
+        assert "unknown dataset" in result.output
+
+    def test_success_prints_cached_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        fake_root = tmp_path / "bird"
+        fake_root.mkdir(parents=True)
+        monkeypatch.setattr(cli, "fetch_benchmark", lambda *a, **kw: fake_root)
+        result = runner.invoke(app, ["fetch", "bird"])
+        assert result.exit_code == 0
+        assert "cached at:" in result.output
+
+    def test_runtime_error_exits_1_with_message(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        msg = "hash mismatch!"
+
+        def _fail(*args: object, **kwargs: object) -> None:
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr(cli, "fetch_benchmark", _fail)
+        result = runner.invoke(app, ["fetch", "bird"])
+        assert result.exit_code == 1
+        assert "hash mismatch!" in result.output
+
 
 @pytest.mark.unit
 class TestDoctor:
