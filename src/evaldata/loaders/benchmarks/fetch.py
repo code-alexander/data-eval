@@ -31,6 +31,10 @@ class BenchmarkSource:
         split: The split file stem the loader reads (e.g. `"dev"`).
         license: The dataset license identifier.
         license_url: A URL describing the license.
+        databases_dirname: The directory name (under the dataset root) holding the
+            per-database SQLite files (e.g. `"dev_databases"`, `"database"`).
+        nested_databases_zip: Whether the databases directory ships as a nested
+            `<databases_dirname>.zip` inside the archive that must be extracted in place.
     """
 
     name: str
@@ -40,6 +44,8 @@ class BenchmarkSource:
     split: str
     license: str
     license_url: str
+    databases_dirname: str
+    nested_databases_zip: bool
 
 
 SOURCES: dict[str, BenchmarkSource] = {
@@ -51,6 +57,19 @@ SOURCES: dict[str, BenchmarkSource] = {
         split="dev",
         license="CC BY-SA 4.0",
         license_url="https://creativecommons.org/licenses/by-sa/4.0/",
+        databases_dirname="dev_databases",
+        nested_databases_zip=True,
+    ),
+    "spider": BenchmarkSource(
+        name="spider",
+        url="https://drive.usercontent.google.com/download?id=1403EGqzIDoHMdQF4c9Bkyl7dZLZ5Wt6J&export=download&confirm=t",
+        archive_sha256="00636695dabed6b5f4b8328a16b13e069a2f16591d5efcce57660669c85b121b",
+        expected_cases=1034,
+        split="dev",
+        license="CC BY-SA 4.0",
+        license_url="https://creativecommons.org/licenses/by-sa/4.0/",
+        databases_dirname="database",
+        nested_databases_zip=False,
     ),
 }
 
@@ -208,37 +227,41 @@ def _normalize_layout(extracted: Path, source: BenchmarkSource) -> Path:
     """Flatten an extracted archive to a directory that the loader can read directly.
 
     Locates `<split>.json` (possibly under a wrapper folder), extracts a nested
-    `<split>_databases.zip` if present, and ignores `__MACOSX`.
+    `<databases_dirname>.zip` when the source ships one, and ignores `__MACOSX`.
 
     Args:
         extracted: The directory the archive was unzipped into.
-        source: The benchmark source (its `split` names the expected files).
+        source: The benchmark source (its `split` and `databases_dirname` name the
+            expected files, and `nested_databases_zip` says whether to extract a
+            nested databases zip in place).
 
     Returns:
-        The directory directly containing `<split>.json` and `<split>_databases/`.
+        The directory directly containing `<split>.json` and `<databases_dirname>/`.
 
     Raises:
         RuntimeError: If the split JSON or databases directory cannot be located.
     """
     split = source.split
+    databases_dirname = source.databases_dirname
     matches = [p for p in extracted.rglob(f"{split}.json") if "__MACOSX" not in p.parts]
     if not matches:
         msg = f"{source.name}: {split}.json not found in the archive"
         raise RuntimeError(msg)
     root = matches[0].parent
 
-    databases_zip = root / f"{split}_databases.zip"
-    if databases_zip.is_file():
-        with zipfile.ZipFile(databases_zip) as zf:
-            zf.extractall(root)
-        databases_zip.unlink()
+    if source.nested_databases_zip:
+        databases_zip = root / f"{databases_dirname}.zip"
+        if databases_zip.is_file():
+            with zipfile.ZipFile(databases_zip) as zf:
+                zf.extractall(root)
+            databases_zip.unlink()
 
     macosx = root / "__MACOSX"
     if macosx.is_dir():
         shutil.rmtree(macosx)
 
-    if not (root / f"{split}_databases").is_dir():
-        msg = f"{source.name}: {split}_databases/ not found after extraction"
+    if not (root / databases_dirname).is_dir():
+        msg = f"{source.name}: {databases_dirname}/ not found after extraction"
         raise RuntimeError(msg)
     return root
 
@@ -267,7 +290,7 @@ def _validate(root: Path, source: BenchmarkSource) -> None:
         )
         raise RuntimeError(msg)
 
-    for db_path in _sqlite_files(root / f"{source.split}_databases"):
+    for db_path in _sqlite_files(root / source.databases_dirname):
         try:
             con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
             try:
@@ -280,6 +303,15 @@ def _validate(root: Path, source: BenchmarkSource) -> None:
         if result is None or result[0] != "ok":
             msg = f"{source.name}: {db_path.name} failed integrity_check"
             raise RuntimeError(msg)
+
+
+def _not_a_zip_message(source: BenchmarkSource) -> str:
+    """Return the error text for a download that is not a valid zip archive."""
+    return (
+        f"{source.name}: the downloaded file is not a valid zip archive. The server likely "
+        f"returned an HTML page (e.g. a Google Drive quota or redirect interstitial) instead "
+        f"of the archive; retry later or download {source.url} manually."
+    )
 
 
 def fetch_benchmark(
@@ -304,13 +336,14 @@ def fetch_benchmark(
         progress: Show a download progress bar on a TTY.
 
     Returns:
-        The cached dataset root: a directory directly containing `<split>.json` and
-        `<split>_databases/`.
+        The cached dataset root: a directory directly containing `<split>.json` and the
+        source's databases directory.
 
     Raises:
         ValueError: If `name` is not a known source.
-        RuntimeError: On a hash mismatch, an untrusted unpinned source, a missing layout,
-            a case-count mismatch, or a SQLite integrity failure.
+        RuntimeError: On a hash mismatch, an untrusted unpinned source, a download that is
+            not a valid zip, a missing layout, a case-count mismatch, or a SQLite integrity
+            failure.
     """  # noqa: DOC502
     source = SOURCES.get(name)
     if source is None:
@@ -343,8 +376,13 @@ def fetch_benchmark(
 
         extracted = tmp_path / "extracted"
         extracted.mkdir()
-        with zipfile.ZipFile(archive) as zf:
-            zf.extractall(extracted)
+        if not zipfile.is_zipfile(archive):
+            raise RuntimeError(_not_a_zip_message(source))
+        try:
+            with zipfile.ZipFile(archive) as zf:
+                zf.extractall(extracted)
+        except zipfile.BadZipFile as e:
+            raise RuntimeError(_not_a_zip_message(source)) from e
         archive.unlink()
 
         root = _normalize_layout(extracted, source)

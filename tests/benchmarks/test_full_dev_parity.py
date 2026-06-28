@@ -1,11 +1,11 @@
-"""Full-dev differential harness: `ExecutionAccuracy` vs the official oracle over real BIRD data.
+"""Full-dev differential harness: `ExecutionAccuracy` vs the official oracle over real dev data.
 
-Runs over the entire cached BIRD dev set against the real schemas and SQLite databases. For each
-case the gold SQL is executed, then deterministic SQL-safe transforms of the gold (wrapped as a
-subquery) stand in as model predictions, exercising pass and edge paths without parsing arbitrary
-SQL or calling a model. For every prediction that executes cleanly, the scorer's verdict is
-compared to the official comparator (Spider's `result_eq` and BIRD's `set == set`) over rows
-fetched by raw `sqlite3` against the same database.
+Parametrized over each cached benchmark (BIRD, Spider): runs over the entire dev set against the
+real schemas and SQLite databases. For each case the gold SQL is executed, then deterministic
+SQL-safe transforms of the gold (wrapped as a subquery) stand in as model predictions, exercising
+pass and edge paths without parsing arbitrary SQL or calling a model. For every prediction that
+executes cleanly, the scorer's verdict is compared to the official comparator (Spider's
+`result_eq` and BIRD's `set == set`) over rows fetched by raw `sqlite3` against the same database.
 
 The one documented intentional divergence is held out: Spider keys order-sensitivity off the
 `'order by'` substring in the gold SQL, while evaldata parses for a *top-level* `ORDER BY` (a
@@ -18,15 +18,19 @@ column name and rejects a result with duplicate output column names (`kind="dupl
 which a positional-tuple oracle cannot model. Some BIRD golds project the same name twice (e.g.
 `SELECT T1.name, T2.name …`); the scorer then fails the case because it cannot represent the
 gold's rows, while the positional oracle passes. Such cases are skipped (and counted) since the
-result is unrepresentable for the scorer rather than a comparison disagreement.
+result is unrepresentable for the scorer rather than a comparison disagreement. Likewise a few
+golds touch non-UTF-8 text (e.g. Spider's `wta_1`): the official eval sets
+`text_factory = decode(errors="ignore")` while our adapter raises on the bytes, so those cases
+fail to execute on our side and are skipped, not compared.
 
-BIRD must already be cached; the test fails loudly if it is not, matching the fail-loud philosophy
-of the other e2e tests. Per-query execution is bounded by a wall-clock timeout so a pathological
-gold cannot hang the run.
+A benchmark must already be cached; the test fails loudly if it is not, matching the fail-loud
+philosophy of the other e2e tests. Per-query execution is bounded by a wall-clock timeout so a
+pathological gold cannot hang the run.
 """
 
 import sqlite3
 import threading
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 
 import pytest
@@ -35,6 +39,7 @@ from sqlglot.errors import SqlglotError
 
 from evaldata.loaders.benchmarks.bird import load_bird
 from evaldata.loaders.benchmarks.fetch import cached_dataset_path
+from evaldata.loaders.benchmarks.spider import load_spider
 from evaldata.platforms.sqlite import SqliteAdapter
 from evaldata.scorers import ExecutionAccuracy, QueryRunner, ScoreContext
 from evaldata.types import EvalCase, GoldQuery, PlatformRef, SolverOutput, Sql
@@ -42,6 +47,13 @@ from tests._vendor.spider_exec_eval import result_eq
 
 _OUTPUT = SolverOutput(output=Sql("SELECT ..."))
 _QUERY_TIMEOUT_SECONDS = 15.0
+
+# The datasets the harness can validate, each with its loader. A dataset must be fetched
+# (`evaldata fetch <name>`) for its parametrization to run; otherwise the test fails loudly.
+_DATASETS: list[tuple[str, Callable[[str], Iterator[EvalCase]]]] = [
+    ("bird", load_bird),
+    ("spider", load_spider),
+]
 
 
 @dataclass
@@ -64,7 +76,9 @@ def _variants(gold_sql: str, gold_row_count: int) -> list[_Variant]:
         multiset), a short limit (missing rows) when the gold returns at least two rows, and an
         explicit ordering.
     """
-    inner = f"({gold_sql})"
+    # Strip a trailing `;` so the gold can be wrapped as a subquery (Spider golds carry one).
+    cleaned = gold_sql.strip().removesuffix(";").strip()
+    inner = f"({cleaned})"
     variants = [
         _Variant("identity", f"SELECT * FROM {inner} "),
         _Variant("distinct", f"SELECT DISTINCT * FROM {inner} "),
@@ -147,21 +161,17 @@ _SPIDER = ExecutionAccuracy(column_alignment="by_value")
 _BIRD = ExecutionAccuracy(row_order="ignore", multiplicity="set")
 
 
-@pytest.fixture(scope="module")
-def cases() -> list[EvalCase]:
-    """Load the entire cached BIRD dev set, failing loudly if it is not cached."""
-    root = cached_dataset_path("bird")
-    if root is None:
-        pytest.fail("BIRD not cached; run: evaldata fetch bird")
-    return list(load_bird(root))
-
-
 # The full dev set runs thousands of real queries; the global per-test timeout is far too tight,
 # and per-query execution is already bounded by `_execute_bounded`.
 @pytest.mark.e2e
 @pytest.mark.timeout(0)
-def test_full_dev_parity(cases: list[EvalCase]) -> None:
-    """Our scorer agrees with the official oracle on every clean (gold, prediction) over BIRD dev."""
+@pytest.mark.parametrize(("dataset", "loader"), _DATASETS, ids=[d[0] for d in _DATASETS])
+def test_full_dev_parity(dataset: str, loader: Callable[[str], Iterator[EvalCase]]) -> None:
+    """Our scorer agrees with the official oracle on every clean (gold, prediction) over the dev set."""
+    root = cached_dataset_path(dataset)
+    if root is None:
+        pytest.fail(f"{dataset} not cached; run: evaldata fetch {dataset}")
+    cases = list(loader(str(root)))
     comparisons = 0
     skips = 0
     mismatches: list[tuple[str, str, str, str, bool, bool]] = []
@@ -218,7 +228,7 @@ def test_full_dev_parity(cases: list[EvalCase]) -> None:
             adapter.close()
 
     print(
-        f"\nBIRD full-dev parity: cases={len(cases)} comparisons={comparisons} "
+        f"\n{dataset} full-dev parity: cases={len(cases)} comparisons={comparisons} "
         f"skips={skips} mismatches={len(mismatches)}"
     )
     assert mismatches == [], f"first mismatches: {mismatches[:5]}"
