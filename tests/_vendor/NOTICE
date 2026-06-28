@@ -1,0 +1,11 @@
+spider_exec_eval.py contains code vendored verbatim from:
+
+  Project:   test-suite-sql-eval (taoyds/test-suite-sql-eval)
+  File:      exec_eval.py
+  URL:       https://github.com/taoyds/test-suite-sql-eval/blob/master/exec_eval.py
+  License:   Apache License 2.0
+  Copyright: Copyright the test-suite-sql-eval authors.
+
+It is used only as a test oracle for differential parity testing of evaldata's
+ExecutionAccuracy scorer. The Apache License 2.0 is available at:
+https://www.apache.org/licenses/LICENSE-2.0

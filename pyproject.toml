@@ -144,6 +144,8 @@ known-first-party = ["evaldata"]
 quote-style = "double"
 indent-style = "space"
 docstring-code-format = true
+# Vendored third-party oracle kept byte-faithful to its upstream source.
+exclude = ["tests/_vendor/spider_exec_eval.py"]
 
 # ---------------------------------------------------------------------------
 # Pytest
