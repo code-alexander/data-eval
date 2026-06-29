@@ -106,6 +106,11 @@ docs = [
     "mkdocstrings[python]>=1.0",
     "mike>=2.1",
 ]
+# Regenerates the committed dbt fixture artifacts. Not part of the default dev install;
+# the tests read the committed artifacts and never invoke dbt.
+fixtures = [
+    "dbt-duckdb>=1.9",
+]
 
 [tool.uv]
 default-groups = ["dev"]
