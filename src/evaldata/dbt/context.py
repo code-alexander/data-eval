@@ -144,9 +144,7 @@ class DbtContext:
     """
 
     def __init__(self, *, models: Iterable[ModelRef], sources: Iterable[SourceRef], schema_version: str) -> None:
-        """Build a context from already-normalised models and sources.
-
-        Prefer `from_target_dir`; this constructor takes pre-built parts.
+        """Build a context from pre-built models and sources.
 
         Args:
             models: The project's models.

@@ -10,8 +10,7 @@ from typing import Any
 
 from evaldata.dbt.errors import DbtError
 
-# The manifest fields this reader uses are stable from schema v10 (dbt-core 1.6) onward,
-# including dbt Fusion's v20 (identical shape to v12). Older shapes are rejected.
+# Fields used here are present and stable from schema v10 onward.
 MIN_MANIFEST_VERSION = 10
 
 
