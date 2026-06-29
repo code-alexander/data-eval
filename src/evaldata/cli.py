@@ -211,9 +211,9 @@ class _DbtMode(enum.StrEnum):
 def dbt_bench(
     project_dir: Path = typer.Argument(..., help="dbt project directory (holds dbt_project.yml and profiles.yml)."),
     model: str = typer.Option(..., "--model", help="litellm model id for the solver under test."),
-    golds: Path | None = typer.Option(None, "--golds", help="Gold-cases YAML file (required for --mode authored)."),
+    cases_file: Path | None = typer.Option(None, "--cases", help="Cases YAML file (required for --mode authored)."),
     mode: _DbtMode = typer.Option(
-        _DbtMode.authored, "--mode", help="Build cases from a golds file or documented models."
+        _DbtMode.authored, "--mode", help="Build cases from a cases file or documented models."
     ),
     target_dir: Path | None = typer.Option(
         None, "--target-dir", help="dbt artifacts directory; defaults to <project_dir>/target."
@@ -231,7 +231,7 @@ def dbt_bench(
 ) -> None:
     """Run a dbt project as a text-to-SQL benchmark and print its execution accuracy (EX).
 
-    Resolves the project's warehouse from its dbt profile, builds cases from a golds file
+    Resolves the project's warehouse from its dbt profile, builds cases from a cases file
     (`authored`) or the project's documented models (`model`), runs a single-prompt LLM solver
     with the project's schema in the prompt, scores each case with order-insensitive set
     execution accuracy, and prints the aggregate EX.
@@ -239,8 +239,8 @@ def dbt_bench(
     Args:
         project_dir: The dbt project directory (holding `dbt_project.yml`).
         model: A litellm model id for the solver under test.
-        golds: Path to the gold-cases YAML file (required for `authored` mode).
-        mode: `authored` to read `golds`, or `model` to derive cases from documented models.
+        cases_file: Path to the cases YAML file (required for `authored` mode).
+        mode: `authored` to read the cases file, or `model` to derive cases from documented models.
         target_dir: The dbt artifacts directory; defaults to `<project_dir>/target`.
         profiles_dir: Directory holding `profiles.yml`; defaults to `project_dir`.
         target: The dbt profile target name; defaults to the profile's `target`.
@@ -260,7 +260,7 @@ def dbt_bench(
     cases = load_dbt(
         artifacts,
         platform=platform,
-        golds=golds,
+        cases=cases_file,
         mode="authored" if mode is _DbtMode.authored else "model",
     )
     if isinstance(cases, DbtError):

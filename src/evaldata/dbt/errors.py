@@ -8,8 +8,8 @@ DbtErrorKind = Literal[
     "target_not_found",
     "artifact_invalid",
     "unsupported_schema_version",
-    "golds_not_found",
-    "golds_invalid",
+    "cases_not_found",
+    "cases_invalid",
     "profile_not_found",
     "unsupported_adapter",
 ]

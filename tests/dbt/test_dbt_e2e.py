@@ -16,14 +16,14 @@ from evaldata.types import PlatformRef
 pytestmark = pytest.mark.e2e
 
 FIXTURE = Path(__file__).parent / "fixtures" / "jaffle_duckdb"
-_GOLDS = "- question: How many customers are there?\n  gold_sql: select count(*) as n from customers\n"
+_CASES = "- question: How many customers are there?\n  gold_sql: select count(*) as n from customers\n"
 
 
 def _project(tmp_path: Path) -> Path:
     # Copy the project so executing against its DuckDB never touches the committed fixture.
     dest = tmp_path / "jaffle"
     shutil.copytree(FIXTURE, dest, ignore=shutil.ignore_patterns("target", "logs", "dbt_packages"))
-    (dest / "golds.yml").write_text(_GOLDS, encoding="utf-8")
+    (dest / "cases.yml").write_text(_CASES, encoding="utf-8")
     return dest
 
 
@@ -31,7 +31,7 @@ def _summary(tmp_path: Path, model_sql: str) -> float:
     project = _project(tmp_path)
     platform = platform_from_profile(project)
     assert isinstance(platform, PlatformRef)
-    cases = load_dbt(project / "artifacts", platform=platform, golds=project / "golds.yml")
+    cases = load_dbt(project / "artifacts", platform=platform, cases=project / "cases.yml")
     assert not isinstance(cases, DbtError)
     solver = PromptSolver(model=StubLlm(model_sql), prompt_template=SCHEMA_PROMPT_TEMPLATE)
     try:

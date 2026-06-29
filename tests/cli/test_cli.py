@@ -253,7 +253,7 @@ class TestDbtBench:
         import litellm
 
         project = _copy_dbt_project(tmp_path)
-        (project / "golds.yml").write_text(
+        (project / "cases.yml").write_text(
             "- question: how many customers?\n  gold_sql: select count(*) as n from customers\n"
         )
         real_completion = litellm.completion
@@ -270,8 +270,8 @@ class TestDbtBench:
                 str(project),
                 "--model",
                 "openai/gpt-4o-mini",
-                "--golds",
-                str(project / "golds.yml"),
+                "--cases",
+                str(project / "cases.yml"),
                 "--target-dir",
                 str(project / "artifacts"),
                 "--json",
@@ -320,14 +320,14 @@ class TestDbtBench:
         assert result.exit_code == 1
         assert "dbt_project.yml" in result.output
 
-    def test_missing_golds_exits_1(self, tmp_path: Path) -> None:
+    def test_missing_cases_exits_1(self, tmp_path: Path) -> None:
         project = _copy_dbt_project(tmp_path)
         result = runner.invoke(
             app,
             ["dbt-bench", str(project), "--model", "openai/gpt-4o-mini", "--target-dir", str(project / "artifacts")],
         )
         assert result.exit_code == 1
-        assert "golds" in result.output
+        assert "cases" in result.output
 
 
 @pytest.mark.unit

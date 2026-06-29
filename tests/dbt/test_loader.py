@@ -17,14 +17,14 @@ ARTIFACTS = Path(__file__).parent / "fixtures" / "jaffle_duckdb" / "artifacts"
 PLATFORM = duckdb_platform(name="dbt-test", path=":memory:")
 
 
-def _golds(tmp_path: Path, body: str) -> Path:
-    path = tmp_path / "golds.yml"
+def _write_cases(tmp_path: Path, body: str) -> Path:
+    path = tmp_path / "cases.yml"
     path.write_text(textwrap.dedent(body), encoding="utf-8")
     return path
 
 
 def test_authored_cases(tmp_path: Path) -> None:
-    golds = _golds(
+    cases_file = _write_cases(
         tmp_path,
         """
         - question: How many customers?
@@ -35,7 +35,7 @@ def test_authored_cases(tmp_path: Path) -> None:
           gold_sql: select * from stg_orders
         """,
     )
-    cases = load_dbt(ARTIFACTS, platform=PLATFORM, golds=golds)
+    cases = load_dbt(ARTIFACTS, platform=PLATFORM, cases=cases_file)
     assert not isinstance(cases, DbtError)
     assert [c.id for c in cases] == ["count-customers", "dbt/authored/1"]
 
@@ -69,34 +69,34 @@ def test_bad_target_dir(tmp_path: Path) -> None:
     assert result.kind == "target_not_found"
 
 
-def test_authored_requires_golds() -> None:
+def test_authored_requires_cases() -> None:
     result = load_dbt(ARTIFACTS, platform=PLATFORM)
     assert isinstance(result, DbtError)
-    assert result.kind == "golds_not_found"
+    assert result.kind == "cases_not_found"
 
 
-def test_golds_file_missing(tmp_path: Path) -> None:
-    result = load_dbt(ARTIFACTS, platform=PLATFORM, golds=tmp_path / "nope.yml")
+def test_cases_file_missing(tmp_path: Path) -> None:
+    result = load_dbt(ARTIFACTS, platform=PLATFORM, cases=tmp_path / "nope.yml")
     assert isinstance(result, DbtError)
-    assert result.kind == "golds_not_found"
+    assert result.kind == "cases_not_found"
 
 
-def test_golds_not_a_list(tmp_path: Path) -> None:
-    result = load_dbt(ARTIFACTS, platform=PLATFORM, golds=_golds(tmp_path, "question: x\n"))
+def test_cases_not_a_list(tmp_path: Path) -> None:
+    result = load_dbt(ARTIFACTS, platform=PLATFORM, cases=_write_cases(tmp_path, "question: x\n"))
     assert isinstance(result, DbtError)
-    assert result.kind == "golds_invalid"
+    assert result.kind == "cases_invalid"
 
 
-def test_golds_invalid_entry(tmp_path: Path) -> None:
-    result = load_dbt(ARTIFACTS, platform=PLATFORM, golds=_golds(tmp_path, "- question: no sql here\n"))
+def test_invalid_case_entry(tmp_path: Path) -> None:
+    result = load_dbt(ARTIFACTS, platform=PLATFORM, cases=_write_cases(tmp_path, "- question: no sql here\n"))
     assert isinstance(result, DbtError)
-    assert result.kind == "golds_invalid"
+    assert result.kind == "cases_invalid"
 
 
-def test_malformed_golds_yaml(tmp_path: Path) -> None:
-    result = load_dbt(ARTIFACTS, platform=PLATFORM, golds=_golds(tmp_path, "- question: [unclosed\n"))
+def test_malformed_cases_yaml(tmp_path: Path) -> None:
+    result = load_dbt(ARTIFACTS, platform=PLATFORM, cases=_write_cases(tmp_path, "- question: [unclosed\n"))
     assert isinstance(result, DbtError)
-    assert result.kind == "golds_invalid"
+    assert result.kind == "cases_invalid"
 
 
 def test_model_mode_skips_undocumented_or_uncompiled() -> None:

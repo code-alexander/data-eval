@@ -21,12 +21,12 @@ dbt docs generate  # writes catalog.json with resolved column types
 `catalog.json` is optional. Without it, `evaldata` uses the column types declared in your model
 YAML instead of the types the warehouse resolved.
 
-## Write golden questions
+## Write the cases file
 
-A golds file pairs each question with the SQL whose result is the correct answer:
+A cases file pairs each question with the SQL whose result is the correct answer:
 
 ```yaml
-# golds.yml
+# cases.yml
 - question: How many customers placed an order in 2024?
   gold_sql: |
     select count(distinct customer_id) as n
@@ -44,7 +44,7 @@ Each entry needs a `question` and a `gold_sql`. `select` limits the schema to na
 ## Run it
 
 ```bash
-evaldata dbt-bench path/to/dbt_project --model openai/gpt-4o-mini --golds golds.yml
+evaldata dbt-bench path/to/dbt_project --model openai/gpt-4o-mini --cases cases.yml
 ```
 
 `evaldata` reads the warehouse connection from the project's dbt profile, gives the model the
@@ -57,7 +57,7 @@ EX (dbt): 72.0% (18/25)
 
 `--model` is any [litellm](https://docs.litellm.ai/docs/providers) model id. Other options:
 
-- `--mode model` — skip the golds file; instead take every documented model, asking its
+- `--mode model` — skip the cases file; instead take every documented model, asking its
   description as the question and using its compiled SQL as the gold answer.
 - `--target-dir DIR` — where the artifacts live, if not `<project>/target`.
 - `--profiles-dir DIR` / `--target NAME` — find and select the dbt profile target.
@@ -85,7 +85,7 @@ from evaldata.dbt import load_dbt, platform_from_profile
 from evaldata.solvers import SCHEMA_PROMPT_TEMPLATE, PromptSolver
 
 platform = platform_from_profile("path/to/dbt_project")
-cases = load_dbt("path/to/dbt_project/target", platform=platform, golds="golds.yml")
+cases = load_dbt("path/to/dbt_project/target", platform=platform, cases="cases.yml")
 
 
 @pytest.mark.parametrize("case", cases, ids=lambda case: case.id)
