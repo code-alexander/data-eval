@@ -256,6 +256,14 @@ class DbtContext:
         """
         return [_source_table(s) for s in self._sources] + [_model_table(m) for m in self._models]
 
+    def models(self) -> list[ModelRef]:
+        """Return the project's models.
+
+        Returns:
+            The models, in manifest order.
+        """
+        return list(self._models)
+
     def sources(self) -> list[SourceRef]:
         """Return the project's source tables.
 

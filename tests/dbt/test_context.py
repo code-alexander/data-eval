@@ -34,7 +34,7 @@ def test_from_target_dir_passes_through_errors(tmp_path: Path) -> None:
 
 
 def test_builds_context_from_fusion_v20_manifest(tmp_path: Path) -> None:
-    # Fusion emits schema v20 (identical in shape to v12), so the same reader builds a context.
+    # dbt Fusion emits schema v20; verify the reader accepts higher version tokens.
     manifest = json.loads((FIXTURE_ARTIFACTS / "manifest.json").read_text(encoding="utf-8"))
     manifest["metadata"]["dbt_schema_version"] = "https://schemas.getdbt.com/dbt/manifest/v20.json"
     target = tmp_path / "target"
@@ -50,6 +50,10 @@ def test_models_and_sources_are_normalised(ctx: DbtContext) -> None:
     assert {m.name for m in ctx._models} == {"stg_customers", "stg_orders", "customers"}
     assert {(s.source_name, s.name) for s in ctx.sources()} == {("jaffle", "raw_customers"), ("jaffle", "raw_orders")}
     assert ctx.schema_version() == "v12"
+
+
+def test_models_returns_all_models_in_order(ctx: DbtContext) -> None:
+    assert [m.name for m in ctx.models()] == ["stg_customers", "stg_orders", "customers"]
 
 
 def test_model_addressable_by_name_and_uid(ctx: DbtContext) -> None:
@@ -76,11 +80,11 @@ def test_compiled_sql_and_relation(ctx: DbtContext) -> None:
 
 def test_columns_use_catalog_types_with_manifest_descriptions(ctx: DbtContext) -> None:
     columns = {c.name: c for c in ctx.model("customers").columns}
-    # All four columns come from the catalog (resolved types), not just the two documented ones.
+    # All four columns come from the catalog; only two are documented in the manifest.
     assert set(columns) == {"customer_id", "customer_name", "order_count", "lifetime_value"}
     assert columns["customer_id"].type == "INTEGER"
     assert columns["customer_id"].description == "Surrogate key for the customer."
-    # Catalog-only column: typed, but undocumented in the manifest.
+    # customer_name is catalog-typed but has no manifest description.
     assert columns["customer_name"].type == "VARCHAR"
     assert columns["customer_name"].description is None
 
@@ -93,11 +97,10 @@ def test_degrades_to_manifest_columns_without_catalog(tmp_path: Path) -> None:
     assert isinstance(built, DbtContext)
 
     columns = {c.name: c for c in built.model("customers").columns}
-    # Only the manifest-documented columns remain, with no resolved types.
     assert set(columns) == {"customer_id", "lifetime_value"}
     assert columns["customer_id"].type is None
     assert columns["customer_id"].description == "Surrogate key for the customer."
-    # Sources also degrade to manifest columns (here, none were documented).
+    # The fixture sources have no manifest-documented columns.
     assert built.sources()[0].columns == ()
 
 

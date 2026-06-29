@@ -1,7 +1,8 @@
-"""dbt integration: read a dbt project's artifacts into evaldata's types.
+"""dbt integration: load a dbt project's artifacts into evaldata types.
 
-`DbtContext` normalises a built dbt `target/` (manifest.json + optional catalog.json) into
-models, sources, and schema context for evaluating AI-generated SQL against the project.
+`DbtContext` reads a built dbt `target/` directory (manifest.json + optional catalog.json)
+and exposes models, sources, and schema context. `load_dbt` converts them into eval cases;
+`platform_from_profile` resolves the project's warehouse connection from a dbt profile.
 """
 
 from evaldata.dbt.context import (
@@ -14,6 +15,8 @@ from evaldata.dbt.context import (
     TableSchema,
 )
 from evaldata.dbt.errors import DbtError
+from evaldata.dbt.loader import load_dbt
+from evaldata.dbt.profile import platform_from_profile
 
 __all__ = [
     "Column",
@@ -24,4 +27,6 @@ __all__ = [
     "SchemaContext",
     "SourceRef",
     "TableSchema",
+    "load_dbt",
+    "platform_from_profile",
 ]

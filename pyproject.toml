@@ -58,6 +58,9 @@ litellm = [
 benchmarks = [
     "platformdirs>=4.0",
 ]
+dbt = [
+    "pyyaml>=6",
+]
 tracing = [
     "openinference-instrumentation>=0.1.52",
     "opentelemetry-exporter-otlp>=1.42.1",
@@ -67,7 +70,7 @@ all-platforms = [
     "evaldata[postgres,snowflake,bigquery,databricks]",
 ]
 all = [
-    "evaldata[all-platforms,litellm,tracing,benchmarks]",
+    "evaldata[all-platforms,litellm,tracing,benchmarks,dbt]",
 ]
 
 [project.urls]

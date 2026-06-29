@@ -901,6 +901,7 @@ all = [
     { name = "opentelemetry-sdk" },
     { name = "platformdirs" },
     { name = "psycopg", extra = ["binary"] },
+    { name = "pyyaml" },
     { name = "snowflake-connector-python" },
 ]
 all-platforms = [
@@ -921,6 +922,9 @@ bigquery = [
 databricks = [
     { name = "databricks-sdk" },
     { name = "databricks-sql-connector" },
+]
+dbt = [
+    { name = "pyyaml" },
 ]
 litellm = [
     { name = "litellm" },
@@ -963,7 +967,7 @@ requires-dist = [
     { name = "databricks-sdk", marker = "extra == 'databricks'", specifier = ">=0.30.0" },
     { name = "databricks-sql-connector", marker = "extra == 'databricks'", specifier = ">=4.2.6" },
     { name = "duckdb", specifier = ">=1.5.3" },
-    { name = "evaldata", extras = ["all-platforms", "litellm", "tracing", "benchmarks"], marker = "extra == 'all'" },
+    { name = "evaldata", extras = ["all-platforms", "litellm", "tracing", "benchmarks", "dbt"], marker = "extra == 'all'" },
     { name = "evaldata", extras = ["postgres", "snowflake", "bigquery", "databricks"], marker = "extra == 'all-platforms'" },
     { name = "google-cloud-bigquery", marker = "extra == 'bigquery'", specifier = ">=3.41.0" },
     { name = "google-cloud-bigquery-storage", marker = "extra == 'bigquery'", specifier = ">=2.38.0" },
@@ -976,12 +980,13 @@ requires-dist = [
     { name = "pyarrow", specifier = ">=24.0.0" },
     { name = "pydantic", specifier = ">=2.13.4" },
     { name = "pytest", specifier = ">=9.0.3" },
+    { name = "pyyaml", marker = "extra == 'dbt'", specifier = ">=6" },
     { name = "rich", specifier = ">=15.0.0" },
     { name = "snowflake-connector-python", marker = "extra == 'snowflake'", specifier = ">=4.5.0" },
     { name = "sqlglot", specifier = ">=30.9.0" },
     { name = "typer", specifier = ">=0.25.1" },
 ]
-provides-extras = ["postgres", "snowflake", "bigquery", "databricks", "litellm", "benchmarks", "tracing", "all-platforms", "all"]
+provides-extras = ["postgres", "snowflake", "bigquery", "databricks", "litellm", "benchmarks", "dbt", "tracing", "all-platforms", "all"]
 
 [package.metadata.requires-dev]
 dev = [
