@@ -1,8 +1,4 @@
-"""The dbt Semantic Layer evaluation vertical: its query, case, output, and pluggable contracts.
-
-Defines `MetricQuery`, `MetricCase`, `MetricSolverOutput`, and the `MetricSolver`/`MetricScorer`
-protocols. Shares `ScoreResult`, `SolverError`, and `PlatformRef` from the core.
-"""
+"""The dbt Semantic Layer evaluation vertical: query, case, output, and pluggable contracts."""
 
 from typing import Annotated, Protocol, runtime_checkable
 
@@ -48,10 +44,7 @@ class MetricCase(BaseModel):
 
 
 class MetricSolverOutput(BaseModel):
-    """A Semantic Layer solver's output: either a candidate `query` or an `error`.
-
-    Exactly one of `query`/`error` is set.
-    """
+    """A Semantic Layer solver's output: either a candidate `query` or an `error` (exactly one set)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -71,7 +64,7 @@ class MetricSolverOutput(BaseModel):
             The validated `MetricSolverOutput`.
 
         Raises:
-            ValueError: If Pydantic validation fails.
+            ValueError: If both or neither of `query` and `error` are set.
         """
         if (self.query is None) == (self.error is None):
             msg = "MetricSolverOutput requires exactly one of 'query' or 'error' to be set"

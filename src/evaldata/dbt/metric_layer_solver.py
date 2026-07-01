@@ -44,16 +44,12 @@ class MetricLayerSolver:
     def solve(self, case: MetricCase) -> MetricSolverOutput:
         """Produce a metric query for `case`.
 
-        Renders the prompt from the question and the case's semantic-layer context, then asks
-        the model for a structured `MetricQuery`. Expected provider failures are mapped to a
-        `SolverError` in `MetricSolverOutput.error`.
-
         Args:
             case: The eval case to solve.
 
         Returns:
-            A `MetricSolverOutput` carrying either the metric query plus token/latency/cost
-            telemetry on success, or a typed `SolverError` on an expected failure.
+            A `MetricSolverOutput` with the metric query and telemetry on success, or a typed
+            `SolverError` on an expected provider failure.
         """
         prompt = self._prompt_template.format_map({"input": case.input, "semantic_layer": case.sl_context})
         completion = self._llm.complete(prompt, response_format=MetricQuery)

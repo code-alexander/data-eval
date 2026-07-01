@@ -57,12 +57,11 @@ def _version_number(token: str) -> int | None:
 def read_artifacts(target_dir: str | Path) -> Artifacts | DbtError:
     """Read and validate the dbt artifacts in a `target/` directory.
 
-    Reads `manifest.json` (required) and `catalog.json` (optional), and checks the manifest
-    schema version is recent enough to read.
+    Reads `manifest.json` (required), `catalog.json`, and `semantic_manifest.json` (both
+    optional), and validates the manifest schema version.
 
     Args:
-        target_dir: Path to a dbt `target/` directory (produced by `dbt compile`/`build`/`docs
-            generate`).
+        target_dir: Path to a dbt `target/` directory.
 
     Returns:
         An `Artifacts` on success, or a `DbtError` if the manifest is absent

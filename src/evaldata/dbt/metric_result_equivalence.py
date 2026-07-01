@@ -15,11 +15,10 @@ def _row_multiset(rows: list[dict[str, str]]) -> Counter[tuple[tuple[str, str], 
 
 
 class MetricResultEquivalence:
-    """Runs the candidate and gold queries through MetricFlow and compares their result rows.
+    """Decides equivalence by running both metric queries and comparing their result rows.
 
-    Equal result rows (as an order-insensitive multiset) pass; differing rows fail — both observed
-    decisions. When either query cannot be run (MetricFlow unavailable, or the query does not run),
-    the result is inconclusive.
+    Equal rows (order-insensitive multiset) pass; differing rows fail; any run failure is
+    inconclusive.
     """
 
     def score(self, case: MetricCase, query: MetricQuery) -> ScoreResult:
@@ -56,5 +55,4 @@ class MetricResultEquivalence:
 
 
 def _inconclusive(detail: str) -> ScoreResult:
-    """Return an inconclusive `ScoreResult` carrying `detail`."""
     return ScoreResult(scorer=SCORER_NAME, verdict="inconclusive", explanation=detail)

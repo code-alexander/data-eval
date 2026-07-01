@@ -2,9 +2,9 @@
 
 Check AI-generated dbt Semantic Layer (MetricFlow) queries against gold answers — on your own
 warehouse, with no dbt Cloud account. `evaldata` reads the metrics and dimensions your project
-defines, asks a model to answer each question with a metric query, and scores it with a
-cost-ordered cascade of three checks: resolve-and-compare, run-and-compare, and an LLM judge.
-The cascade exits as soon as one check reaches a verdict, so cheap checks run first.
+defines, asks a model to answer each question with a metric query, and scores it with a cascade
+of three checks: resolve-and-compare, run-and-compare, and an LLM judge. The cascade runs the
+cheapest check first and exits as soon as one reaches a verdict.
 
 ## Prerequisites
 
@@ -66,18 +66,19 @@ SL accuracy: 84.0% (21/25)
 
 ## How it's scored
 
-Each question runs through three checks in order; the cascade exits at the first verdict:
+Each question runs through three checks in order, cheapest first; the cascade exits at the first
+verdict:
 
 1. **Resolve and compare.** MetricFlow resolves both the candidate and gold queries against the
    semantic manifest — filling in default time grains and entity paths the way the warehouse would.
-   Queries that resolve to the same form are confirmed equivalent without running anything.
+   Queries that resolve to the same form are equivalent, decided without running anything.
 2. **Run and compare.** When the resolved forms differ, both queries run through `mf` and their
-   result rows are compared. A verdict is reached from the actual data the warehouse returns.
-3. **LLM judge.** An LLM grades the candidate against the gold — useful when the queries can't be
-   run (for example, the warehouse is unreachable) or when you want a semantic read of the result.
+   result rows are compared. The verdict comes from the data the warehouse returns.
+3. **LLM judge.** A grader model reads the candidate and gold queries and decides whether they
+   answer the question the same way — a semantic read that doesn't need to run either query.
 
-The cascade exits as soon as one check produces a verdict, so later checks only run when earlier
-ones don't decide. The LLM judge is paid for only when it runs.
+Later checks run only when the earlier ones don't decide, so the LLM judge is called — and paid
+for — only for the questions the first two checks leave open.
 
 ## Run it in pytest
 
@@ -110,12 +111,12 @@ so check for it before iterating. To compose the cascade yourself, use `MetricSp
 
 ## How it works
 
-- MetricFlow itself resolves and runs every query, so a verdict matches what the semantic layer
-  would actually return — `evaldata` never reimplements MetricFlow's logic.
+- MetricFlow resolves and runs every query, so a verdict matches what the semantic layer would
+  return; `evaldata` doesn't reimplement MetricFlow's logic.
 - Resolving a query needs only `target/semantic_manifest.json`; running one needs the built
   warehouse the project's dbt profile points at.
-- The resolve-and-compare check only confirms equivalence — it never rejects a query on structure
-  alone, deferring to running the queries when it can't be sure.
+- The resolve-and-compare check confirms equivalence but never rejects on structure alone: when
+  the resolved forms differ, it defers to running the queries rather than call them unequal.
 
 ## Next steps
 

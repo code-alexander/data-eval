@@ -320,19 +320,14 @@ def sl_bench(
 ) -> None:
     """Run a dbt Semantic Layer project as a MetricFlow benchmark and print its accuracy.
 
-    Resolves the project's warehouse from its dbt profile, builds metric cases from the cases file,
-    runs a single-prompt LLM solver that writes a MetricFlow query per question, scores each with
-    a cost-ordered cascade (resolve-and-compare, run-and-compare, LLM judge), and prints the
-    aggregate pass rate.
-
     Args:
         project_dir: The dbt project directory (holding `dbt_project.yml`).
         model: A litellm model id for the solver under test.
         cases_file: Path to the metric cases YAML file.
         grader_model: A litellm model id for the judge tier; defaults to `model`.
-        target_dir: The dbt artifacts directory; defaults to `<project_dir>/target`.
+        target_dir: dbt artifacts directory; defaults to `<project_dir>/target`.
         profiles_dir: Directory holding `profiles.yml`; defaults to `project_dir`.
-        target: The dbt profile target name; defaults to the profile's `target`.
+        target: dbt profile target name; defaults to the profile's default target.
         limit: Run at most this many cases, or all of them when omitted.
         json_path: If given, also write a JSON stats artifact to this path.
 

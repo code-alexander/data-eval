@@ -8,15 +8,13 @@ from evaldata.llm import Llm
 
 
 def metric_layer_equivalence(model: str | Llm) -> MetricFirstDecisive:
-    """The metric-query equivalence check ordered from cheapest to most expensive.
+    """Return a cost-ordered `MetricFirstDecisive` cascade: spec-compare → run-compare → LLM judge.
 
     Args:
-        model: A litellm grader-model identifier, or an `Llm` to use directly, for the judge.
+        model: A litellm grader-model identifier, or an `Llm` to use directly, for the judge tier.
 
     Returns:
-        A `MetricFirstDecisive` cascade: `MetricSpecEquivalence` compares the resolved queries
-        first and exits early when it can decide; when it cannot, `MetricResultEquivalence` runs
-        both queries and decides by their rows; when that is also inconclusive, `MetricLayerJudge`
-        grades the queries.
+        A `MetricFirstDecisive` over `MetricSpecEquivalence`, `MetricResultEquivalence`, and
+        `MetricLayerJudge(model)`.
     """
     return MetricFirstDecisive([MetricSpecEquivalence(), MetricResultEquivalence(), MetricLayerJudge(model)])

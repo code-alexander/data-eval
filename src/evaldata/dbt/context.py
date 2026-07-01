@@ -505,11 +505,9 @@ class DbtContext:
     def sl_context(self) -> SemanticLayerContext:
         """Build a `SemanticLayerContext` from the project's metrics, dimensions, and entities.
 
-        Dimensions and entities are collected across all semantic models and deduplicated by name
-        (first occurrence kept).
-
         Returns:
-            The semantic-layer context, ready to pass to `as_text()`.
+            A `SemanticLayerContext` with dimensions and entities deduplicated by name across all
+            semantic models (first occurrence kept).
         """
         entities = _unique_by_name(e for model in self._semantic_models for e in model.entities)
         return SemanticLayerContext(

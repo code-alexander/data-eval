@@ -4,13 +4,12 @@ from evaldata.types import LlmError, SolverError
 
 
 def to_solver_error(error: LlmError) -> SolverError:
-    """Translate an `LlmError` into a `SolverError`, preserving message, provider, and cause.
+    """Translate an `LlmError` into a `SolverError`.
 
-    A `malformed_output` becomes `invalid_structured_output`; every provider kind maps through
-    unchanged.
+    `malformed_output` maps to `invalid_structured_output`; all other kinds pass through unchanged.
 
     Args:
-        error: The error returned by the `Llm` call.
+        error: The `LlmError` to translate.
 
     Returns:
         The equivalent `SolverError`.

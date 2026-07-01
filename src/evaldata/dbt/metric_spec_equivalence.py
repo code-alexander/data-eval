@@ -9,12 +9,9 @@ SCORER_NAME = "metric_spec_equivalence"
 
 
 class MetricSpecEquivalence:
-    """Confirms a metric query matches the gold query by comparing their MetricFlow-resolved forms.
+    """Confirms equivalence by comparing MetricFlow-resolved forms; never refutes.
 
-    Both queries are resolved through MetricFlow against the project's semantic manifest; equal
-    resolved forms confirm equivalence (a passing, proven result). Anything else — the forms
-    differ, MetricFlow is unavailable, or a query does not resolve — is inconclusive, never a
-    refutation.
+    Equal resolved forms pass (proven); unequal forms or any resolution failure is inconclusive.
     """
 
     def score(self, case: MetricCase, query: MetricQuery) -> ScoreResult:
@@ -46,5 +43,4 @@ class MetricSpecEquivalence:
 
 
 def _inconclusive(detail: str) -> ScoreResult:
-    """Return an inconclusive `ScoreResult` carrying `detail`."""
     return ScoreResult(scorer=SCORER_NAME, verdict="inconclusive", explanation=detail)

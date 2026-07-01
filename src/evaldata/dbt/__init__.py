@@ -1,13 +1,9 @@
 """dbt integration: load a dbt project's artifacts and evaluate its SQL and Semantic Layer.
 
-`DbtContext` reads a built dbt `target/` directory (manifest.json, optional catalog.json, and
-optional semantic_manifest.json) and exposes models, sources, schema context, and the semantic
-layer's metrics and dimensions. `load_dbt` converts them into SQL eval cases and `load_dbt_metrics`
-into Semantic Layer cases; `platform_from_profile` resolves the project's warehouse connection from
-a dbt profile. `MetricCase`, `MetricLayerSolver`, `MetricSpecEquivalence`, `MetricResultEquivalence`,
-`MetricLayerJudge`, and `MetricFirstDecisive` form the Semantic Layer evaluation vertical;
-`metric_layer_equivalence` is the ready-made cascade; `evaluate_metric_case`,
-`assert_metric_eval`, and `run_metric_benchmark` are its runner surfaces.
+`DbtContext` reads a built dbt `target/` directory and exposes models, sources, schema context,
+and the semantic layer's metrics and dimensions. `load_dbt` builds SQL eval cases;
+`load_dbt_metrics` builds Semantic Layer cases; `metric_layer_equivalence` is the ready-made
+scoring cascade; `platform_from_profile` resolves the warehouse connection from a dbt profile.
 """
 
 from evaldata.dbt.combinators import MetricFirstDecisive

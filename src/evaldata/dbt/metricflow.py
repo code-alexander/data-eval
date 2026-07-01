@@ -1,6 +1,6 @@
 """`canonicalize` and `run`: resolve and execute a `MetricQuery` through MetricFlow.
 
-This is the one module that depends on the optional `dbt-metricflow` toolchain.
+Requires the optional `dbt-metricflow` toolchain (`dbt-sl` extra).
 """
 
 import csv
@@ -15,8 +15,6 @@ from typing import Any
 from evaldata.dbt.errors import DbtError
 from evaldata.dbt.semantic_layer import MetricQuery
 
-# A group-by, order-by, or metric item resolved to its identifying parts: the MetricFlow spec
-# class, element name, entity-link path, time grain, and date part.
 SpecKey = tuple[str, str, tuple[str, ...], str | None, str | None]
 
 
@@ -44,10 +42,10 @@ def _spec_key(spec: Any) -> SpecKey:
 
 
 def canonicalize(query: MetricQuery, target_dir: str | Path) -> CanonicalMetricQuery | DbtError:
-    """Resolve `query` against a project's semantic manifest into a comparable canonical form.
+    """Resolve `query` against the project's semantic manifest into a comparable form.
 
-    MetricFlow resolves default time grains and entity-linked dimension paths the way the warehouse
-    would, so two queries that mean the same thing produce equal `CanonicalMetricQuery` values.
+    MetricFlow resolves default time grains and entity-linked paths, so semantically equal
+    queries produce equal `CanonicalMetricQuery` values.
 
     Args:
         query: The metric query to resolve.
@@ -55,8 +53,8 @@ def canonicalize(query: MetricQuery, target_dir: str | Path) -> CanonicalMetricQ
 
     Returns:
         A `CanonicalMetricQuery`, or a `DbtError` if MetricFlow is not installed
-        (`metricflow_unavailable`), the manifest is missing (`target_not_found`), or the query does
-        not resolve against the manifest (`metric_query_invalid`).
+        (`metricflow_unavailable`), the manifest is missing (`target_not_found`), or the query
+        does not resolve (`metric_query_invalid`).
     """
     try:
         from metricflow_semantics.model.dbt_manifest_parser import parse_manifest_from_dbt_generated_manifest
@@ -112,18 +110,15 @@ def _query_command(mf: str, query: MetricQuery, out_csv: Path) -> list[str]:
 
 
 def run(query: MetricQuery, target_dir: str | Path) -> list[dict[str, str]] | DbtError:
-    """Execute `query` with the `mf` command against the project that owns `target_dir`.
-
-    `mf` runs in the dbt project directory (`target_dir`'s parent), reading its
-    `semantic_manifest.json` and connecting to the warehouse through the project's profile.
+    """Execute `query` with the `mf` CLI against the project whose `target/` is `target_dir`.
 
     Args:
         query: The metric query to run.
-        target_dir: A dbt `target/` directory; its parent is the project `mf` runs in.
+        target_dir: A dbt `target/` directory; its parent is the project root `mf` runs in.
 
     Returns:
-        The result rows (each a column-to-value mapping of the CSV export), or a `DbtError` if `mf`
-        is not installed (`metricflow_unavailable`) or the query fails to run (`metric_query_invalid`).
+        The result rows (column-to-value maps from the CSV export), or a `DbtError` if `mf`
+        is not on PATH (`metricflow_unavailable`) or the query fails (`metric_query_invalid`).
     """
     mf = shutil.which("mf")
     if mf is None:

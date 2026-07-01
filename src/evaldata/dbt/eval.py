@@ -1,4 +1,4 @@
-"""Run Semantic Layer cases through a solver and scorers: the per-case pipeline and its surfaces."""
+"""Run Semantic Layer cases through a solver and scorers: per-case, pytest, and batch runners."""
 
 from collections.abc import Iterable, Sequence
 
@@ -16,11 +16,10 @@ def evaluate_metric_case(case: MetricCase, solver: MetricSolver, *, scorers: Seq
         scorers: Scorers applied to the candidate query; all must pass for the case to pass.
 
     Returns:
-        A `CaseReport` carrying the per-scorer results, or a solver error when the solver failed.
+        A `CaseReport` with per-scorer results, or a solver error when the solver failed.
 
     Raises:
-        AssertionError: If the solver returns neither a query nor an error (unreachable — the
-            `MetricSolverOutput` validator guarantees exactly one is set).
+        AssertionError: If the solver returns neither a query nor an error (unreachable).
     """
     output = solver.solve(case)
     if output.error is not None:

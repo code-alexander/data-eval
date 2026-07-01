@@ -1,4 +1,4 @@
-"""`MetricFirstDecisive`: a cost-ordered cascade of `MetricScorer`s, stopping at the first decision."""
+"""`MetricFirstDecisive`: run member `MetricScorer`s in order, stopping at the first decisive result."""
 
 from collections.abc import Sequence
 
